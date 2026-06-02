@@ -39,7 +39,17 @@ def assert_dashboard_shape(data):
     assert "total_conversations" in data and isinstance(data["total_conversations"], int)
     assert "next_appointments" in data and isinstance(data["next_appointments"], list)
     assert "recent_leads" in data and isinstance(data["recent_leads"], list)
-    assert "_id" not in str(data)
+    assert_no_mongo_id_keys(data)
+
+
+def assert_no_mongo_id_keys(value):
+    if isinstance(value, dict):
+        assert "_id" not in value
+        for nested in value.values():
+            assert_no_mongo_id_keys(nested)
+    elif isinstance(value, list):
+        for item in value:
+            assert_no_mongo_id_keys(item)
 
 
 def get_dashboard(api_client):

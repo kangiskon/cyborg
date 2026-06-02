@@ -578,6 +578,111 @@ main {
     font-weight: 800;
 }
 
+.notification-center,
+.audit-panel {
+    margin-bottom: 20px;
+    padding: 14px;
+    border: 1px solid rgba(216, 208, 197, 0.74);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.mini-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.mini-heading span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 900;
+    color: var(--forest);
+}
+
+.mini-heading strong {
+    display: grid;
+    place-items: center;
+    min-width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: var(--terracotta);
+    color: #fff;
+    font-size: 13px;
+}
+
+.notification-item {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 8px;
+    padding: 12px;
+    text-align: left;
+    border: 1px solid rgba(216, 208, 197, 0.82);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--ink);
+}
+
+.notification-item.unread {
+    border-color: rgba(200, 121, 101, 0.65);
+    box-shadow: inset 4px 0 0 var(--terracotta);
+}
+
+.notification-item.read {
+    opacity: 0.72;
+}
+
+.notification-item span,
+.audit-item span {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.audit-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 0;
+    border-top: 1px solid rgba(216, 208, 197, 0.7);
+}
+
+.audit-item strong {
+    text-transform: capitalize;
+}
+
+.lead-meta {
+    display: flex;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lead-meta span {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--clay);
+    color: var(--forest);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: capitalize;
+}
+
+.approve-lead-button {
+    border: 1px solid rgba(44, 76, 59, 0.35);
+    border-radius: 999px;
+    background: var(--forest);
+    color: #fff;
+    padding: 7px 11px;
+    font-size: 12px;
+    font-weight: 900;
+}
+
 .profile-stack {
     display: flex;
     flex-direction: column;

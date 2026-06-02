@@ -10,11 +10,13 @@ import {
   CalendarCheck,
   Check,
   Clock3,
+  ClipboardList,
   Headphones,
   Inbox,
   LockKeyhole,
   MessageCircle,
   PhoneCall,
+  Bell,
   Send,
   Sparkles,
   UserRound,
@@ -464,7 +466,77 @@ function StaffBadge({ staffAuth, onLogout }) {
   );
 }
 
-function InboxPanel({ dashboard, staffAuth, onLogin, onLogout }) {
+function NotificationCenter({ notifications, unreadCount, onMarkRead }) {
+  return (
+    <div className="notification-center" data-testid="notification-center-panel">
+      <div className="mini-heading" data-testid="notification-center-heading">
+        <span><Bell size={ICON_SIZE.action} /> Notifications</span>
+        <strong data-testid="notification-unread-count">{unreadCount}</strong>
+      </div>
+      {(notifications || []).length === 0 ? (
+        <p data-testid="notifications-empty-state">No alerts yet.</p>
+      ) : (
+        notifications.slice(0, 5).map((item) => (
+          <button
+            className={`notification-item ${item.read_by?.length ? "read" : "unread"}`}
+            data-testid={`notification-item-${item.id}`}
+            type="button"
+            key={item.id}
+            onClick={() => onMarkRead(item.id)}
+          >
+            <strong data-testid={`notification-item-${item.id}-title`}>{item.title}</strong>
+            <span data-testid={`notification-item-${item.id}-message`}>{item.message}</span>
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
+function AuditLogPanel({ logs }) {
+  return (
+    <div className="audit-panel" data-testid="audit-log-panel">
+      <div className="mini-heading" data-testid="audit-log-heading">
+        <span><ClipboardList size={ICON_SIZE.action} /> Staff activity</span>
+      </div>
+      {(logs || []).length === 0 ? (
+        <p data-testid="audit-empty-state">No staff activity yet.</p>
+      ) : (
+        logs.slice(0, 8).map((log) => (
+          <div className="audit-item" data-testid={`audit-log-item-${log.id}`} key={log.id}>
+            <strong data-testid={`audit-log-item-${log.id}-action`}>{log.action.replaceAll("_", " ")}</strong>
+            <span data-testid={`audit-log-item-${log.id}-detail`}>{log.actor_name} · {log.resource}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function SuggestedLeadActions({ lead, staffAuth, refreshDashboard }) {
+  const canApprove = ["admin", "staff"].includes(staffAuth?.staff?.role);
+  if (lead.status !== "suggested" || !canApprove) return null;
+
+  const approveLead = async () => {
+    try {
+      await axios.post(`${API}/leads/${lead.id}/approve`, {}, {
+        headers: authHeaders(staffAuth.token),
+      });
+      toast.success("Suggested lead approved.");
+      refreshDashboard();
+    } catch (error) {
+      toast.error("Could not approve this suggested lead.");
+    }
+  };
+
+  return (
+    <button data-testid={`lead-approve-button-${lead.id}`} className="approve-lead-button" type="button" onClick={approveLead}>
+      Approve
+    </button>
+  );
+}
+
+function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, unreadCount, auditLogs, onMarkRead, refreshDashboard }) {
   if (!staffAuth?.token) {
     return <StaffLoginPanel onLogin={onLogin} />;
   }
@@ -479,6 +551,7 @@ function InboxPanel({ dashboard, staffAuth, onLogin, onLogout }) {
         </div>
         <Headphones data-testid="inbox-panel-icon" size={ICON_SIZE.panel} />
       </div>
+      <NotificationCenter notifications={notifications} unreadCount={unreadCount} onMarkRead={onMarkRead} />
       <div className="handoff-list" data-testid="appointments-handoff-list">
         <h3 data-testid="appointments-handoff-title">Upcoming appointments</h3>
         {(dashboard?.next_appointments || []).length === 0 ? (
@@ -506,11 +579,16 @@ function InboxPanel({ dashboard, staffAuth, onLogin, onLogout }) {
                 <strong data-testid={`lead-item-${item.id}-name`}>{item.name}</strong>
                 <span data-testid={`lead-item-${item.id}-interest`}>{item.interest}</span>
               </div>
-              <time data-testid={`lead-item-${item.id}-phone`}>{item.phone}</time>
+              <div className="lead-meta" data-testid={`lead-item-${item.id}-meta`}>
+                <time data-testid={`lead-item-${item.id}-phone`}>{item.phone}</time>
+                <span data-testid={`lead-item-${item.id}-status`}>{item.status}</span>
+                <SuggestedLeadActions lead={item} staffAuth={staffAuth} refreshDashboard={refreshDashboard} />
+              </div>
             </div>
           ))
         )}
       </div>
+      {staffAuth.staff.role === "admin" && <AuditLogPanel logs={auditLogs} />}
     </section>
   );
 }
@@ -601,6 +679,9 @@ const Home = () => {
   const [messages, setMessages] = useState([initialMessage]);
   const [sessionId, setSessionId] = useState(null);
   const [staffAuth, setStaffAuth] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   const loadPublicData = useCallback(async () => {
     try {
@@ -620,12 +701,32 @@ const Home = () => {
       const dashboardResponse = await axios.get(`${API}/dashboard`, {
         headers: authHeaders(token),
       });
+      const notificationResponse = await axios.get(`${API}/notifications`, {
+        headers: authHeaders(token),
+      });
       setDashboard(dashboardResponse.data);
+      setNotifications(notificationResponse.data.notifications);
+      setUnreadCount(notificationResponse.data.unread_count);
+
+      const meResponse = await axios.get(`${API}/auth/me`, {
+        headers: authHeaders(token),
+      });
+      if (meResponse.data.role === "admin") {
+        const auditResponse = await axios.get(`${API}/audit-logs`, {
+          headers: authHeaders(token),
+        });
+        setAuditLogs(auditResponse.data.logs);
+      } else {
+        setAuditLogs([]);
+      }
     } catch (error) {
       if (error.response?.status === 401 || error.response?.status === 403) {
         localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
         setStaffAuth(null);
         setDashboard(null);
+        setNotifications([]);
+        setUnreadCount(0);
+        setAuditLogs([]);
         toast.error("Staff session expired. Please log in again.");
       } else {
         toast.error("Could not load staff inbox.");
@@ -662,15 +763,34 @@ const Home = () => {
   }, [loadProtectedData]);
 
   const handleStaffLogout = useCallback(() => {
+    const token = staffAuth?.token;
+    if (token) {
+      axios.post(`${API}/auth/logout`, {}, { headers: authHeaders(token) }).catch(() => {});
+    }
     localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
     setStaffAuth(null);
     setDashboard(null);
+    setNotifications([]);
+    setUnreadCount(0);
+    setAuditLogs([]);
     toast.success("Staff logged out.");
-  }, []);
+  }, [staffAuth?.token]);
 
   const refreshDashboard = useCallback(() => {
     loadProtectedData(staffAuth?.token);
   }, [loadProtectedData, staffAuth?.token]);
+
+  const markNotificationRead = useCallback(async (notificationId) => {
+    if (!staffAuth?.token) return;
+    try {
+      await axios.post(`${API}/notifications/${notificationId}/read`, {}, {
+        headers: authHeaders(staffAuth.token),
+      });
+      refreshDashboard();
+    } catch (error) {
+      toast.error("Could not mark notification as read.");
+    }
+  }, [refreshDashboard, staffAuth?.token]);
 
   const stats = useMemo(() => buildStats(dashboard), [dashboard]);
 
@@ -734,7 +854,17 @@ const Home = () => {
         </section>
 
         <section id="inbox" className="inbox-grid" data-testid="inbox-section">
-          <InboxPanel dashboard={dashboard} staffAuth={staffAuth} onLogin={handleStaffLogin} onLogout={handleStaffLogout} />
+          <InboxPanel
+            dashboard={dashboard}
+            staffAuth={staffAuth}
+            onLogin={handleStaffLogin}
+            onLogout={handleStaffLogout}
+            notifications={notifications}
+            unreadCount={unreadCount}
+            auditLogs={auditLogs}
+            onMarkRead={markNotificationRead}
+            refreshDashboard={refreshDashboard}
+          />
         </section>
       </main>
     </div>

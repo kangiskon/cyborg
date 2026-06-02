@@ -144,6 +144,16 @@ class TestRoleProtection:
         assert restore.status_code == 200
         assert restore.json()["hours"] == original["hours"]
 
+    def test_staff_and_viewer_cannot_access_audit_logs(self, api_client):
+        staff_headers = auth_header(api_client, STAFF_ACCESS_CODE)
+        viewer_headers = auth_header(api_client, VIEWER_ACCESS_CODE)
+
+        staff_audit = api_client.get(f"{API_BASE}/audit-logs", headers=staff_headers, timeout=20)
+        viewer_audit = api_client.get(f"{API_BASE}/audit-logs", headers=viewer_headers, timeout=20)
+
+        assert staff_audit.status_code == 403
+        assert viewer_audit.status_code == 403
+
 
 class TestPublicFlowsWithoutStaffToken:
     """Ensure visitor-facing APIs continue to work without staff auth token."""
