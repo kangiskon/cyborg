@@ -13,7 +13,7 @@
 - Frontend: React single-page workspace with chat, booking, lead capture, profile, dashboard stats, and inbox sections.
 - Backend: FastAPI API under `/api` with MongoDB persistence.
 - Database: MongoDB collections for business profiles, chat sessions/messages, appointments, and leads; responses exclude Mongo `_id` fields.
-- AI: Server-side GPT-5.2 integration through emergentintegrations; API key remains backend-only. Graceful fallback message is returned if provider quota/service fails.
+- AI: Server-side GPT-5.2 integration through emergentintegrations using EMERGENT_LLM_KEY; key remains backend-only. Graceful fallback message is returned if provider service fails.
 - Styling: Organic & Earthy light dashboard using Outfit/Figtree, forest green, clay, warm sand, responsive bento/control-room layout.
 
 ## User Personas
@@ -40,12 +40,12 @@
 - Verified via backend curl, screenshot interaction, and testing agent regression.
 
 ## Current Integration Status
-- GPT-5.2 wiring is implemented.
-- The provided OpenAI key currently returns `insufficient_quota`; the app handles this without crashing and asks visitors for details instead.
+- GPT-5.2 wiring is implemented and working with the Emergent LLM key.
+- Live receptionist replies were verified via `/api/chat/message`.
 
 ## Prioritized Backlog
 ### P0
-- Replace or fund the OpenAI key so live AI answers are fully available.
+- Add staff authentication before exposing admin inbox data outside internal use.
 
 ### P1
 - Add staff authentication and private admin-only inbox access.
@@ -58,6 +58,6 @@
 - Add analytics for conversion, missed questions, and popular services.
 
 ## Next Tasks
-1. Resolve OpenAI quota/key issue for live GPT-5.2 responses.
-2. Add staff login before exposing inbox data beyond demo use.
-3. Add notification handoff for appointments and callback requests.
+1. Add staff login before exposing inbox data beyond demo use.
+2. Add notification handoff for appointments and callback requests.
+3. Add automatic chat-to-lead extraction.

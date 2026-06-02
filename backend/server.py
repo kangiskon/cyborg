@@ -276,7 +276,7 @@ async def ensure_session(session_id: Optional[str], first_message: str = "") -> 
 
 
 async def generate_ai_reply(session_id: str, user_text: str) -> str:
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
         return "I can help with FAQs, callback details, and booking requests. Please share your name, phone number, and what you need help with."
 
@@ -413,14 +413,14 @@ async def chat_message(input_data: ChatMessageCreate):
     await store_message(session_id, "visitor", input_data.message)
     reply = await generate_ai_reply(session_id, input_data.message)
     await store_message(session_id, "receptionist", reply)
-    return ChatResponse(session_id=session_id, message=reply, mode="live" if os.environ.get("OPENAI_API_KEY") else "mocked")
+    return ChatResponse(session_id=session_id, message=reply, mode="live" if os.environ.get("EMERGENT_LLM_KEY") else "mocked")
 
 
 @api_router.post("/chat/stream")
 async def chat_stream(input_data: ChatMessageCreate):
     session_id = await ensure_session(input_data.session_id, input_data.message)
     await store_message(session_id, "visitor", input_data.message)
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
         async def mock_generator():
             text = "I can help with FAQs, callbacks, and appointments. Could you share your name, phone number, and what you need help with?"
