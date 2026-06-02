@@ -399,15 +399,7 @@ function ProfilePanel({ profile, setProfile }) {
     setProfile(nextProfile);
     setEditing(null);
     try {
-      await axios.put(`${API}/business-profile`, {
-        business_name: nextProfile.business_name,
-        business_types: nextProfile.business_types,
-        voice: nextProfile.voice,
-        hours: nextProfile.hours,
-        location: nextProfile.location,
-        services: nextProfile.services,
-        faq: nextProfile.faq,
-      });
+      await axios.patch(`${API}/business-profile`, { [field]: value });
       toast.success("Business profile updated.");
     } catch (error) {
       toast.error("Could not update profile.");

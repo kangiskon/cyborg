@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime, timezone
@@ -55,6 +55,25 @@ DEFAULT_PROFILE = {
     ],
 }
 
+AVAILABLE_SLOTS = ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00"]
+
+
+def validate_iso_date(value: str) -> str:
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("Date must use YYYY-MM-DD format.") from exc
+    if parsed < datetime.now(timezone.utc).date():
+        raise ValueError("Date cannot be in the past.")
+    return value
+
+
+def validate_phone(value: str) -> str:
+    digits = [char for char in value if char.isdigit()]
+    if len(digits) < 7:
+        raise ValueError("Phone number must include at least 7 digits.")
+    return value.strip()
+
 
 class BusinessProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -80,13 +99,28 @@ class BusinessProfileUpdate(BaseModel):
     faq: List[Dict[str, str]]
 
 
+class BusinessProfilePartialUpdate(BaseModel):
+    business_name: Optional[str] = None
+    business_types: Optional[List[str]] = None
+    voice: Optional[str] = None
+    hours: Optional[str] = None
+    location: Optional[str] = None
+    services: Optional[List[str]] = None
+    faq: Optional[List[Dict[str, str]]] = None
+
+
 class LeadCreate(BaseModel):
-    name: str
-    email: Optional[str] = None
-    phone: str
-    interest: str
+    name: str = Field(..., min_length=2)
+    email: Optional[EmailStr] = None
+    phone: str = Field(..., min_length=7)
+    interest: str = Field(..., min_length=3)
     preferred_contact_time: Optional[str] = None
     source: str = "receptionist"
+
+    @field_validator("phone")
+    @classmethod
+    def phone_has_enough_digits(cls, value: str) -> str:
+        return validate_phone(value)
 
 
 class Lead(BaseModel):
@@ -94,7 +128,7 @@ class Lead(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     phone: str
     interest: str
     preferred_contact_time: Optional[str] = None
@@ -104,13 +138,30 @@ class Lead(BaseModel):
 
 
 class AppointmentCreate(BaseModel):
-    name: str
-    email: Optional[str] = None
-    phone: str
+    name: str = Field(..., min_length=2)
+    email: Optional[EmailStr] = None
+    phone: str = Field(..., min_length=7)
     service: str
     date: str
     time: str
     notes: Optional[str] = None
+
+    @field_validator("phone")
+    @classmethod
+    def phone_has_enough_digits(cls, value: str) -> str:
+        return validate_phone(value)
+
+    @field_validator("date")
+    @classmethod
+    def date_is_valid_iso(cls, value: str) -> str:
+        return validate_iso_date(value)
+
+    @field_validator("time")
+    @classmethod
+    def time_is_bookable_slot(cls, value: str) -> str:
+        if value not in AVAILABLE_SLOTS:
+            raise ValueError("Time must be one of the available appointment slots.")
+        return value
 
 
 class Appointment(BaseModel):
@@ -118,7 +169,7 @@ class Appointment(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     phone: str
     service: str
     date: str
@@ -271,6 +322,22 @@ async def update_business_profile(input_data: BusinessProfileUpdate):
     return profile
 
 
+@api_router.patch("/business-profile", response_model=BusinessProfile)
+async def patch_business_profile(input_data: BusinessProfilePartialUpdate):
+    current = await get_profile_doc()
+    updates = input_data.model_dump(exclude_unset=True)
+    if not updates:
+        return BusinessProfile(**current)
+    next_profile = {**current, **updates, "updated_at": utc_now_iso()}
+    profile = BusinessProfile(**next_profile)
+    await db.business_profiles.update_one(
+        {"id": profile.id},
+        {"$set": profile.model_dump()},
+        upsert=True,
+    )
+    return profile
+
+
 @api_router.get("/dashboard", response_model=DashboardSummary)
 async def get_dashboard():
     today = datetime.now(timezone.utc).date().isoformat()
@@ -290,10 +357,13 @@ async def get_dashboard():
 
 @api_router.get("/appointments/slots")
 async def get_available_slots(date: str):
-    base_slots = ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00"]
+    try:
+        validate_iso_date(date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     booked = await db.appointments.find({"date": date}, {"_id": 0, "time": 1}).to_list(100)
     booked_times = {item["time"] for item in booked}
-    return {"date": date, "slots": [{"time": slot, "available": slot not in booked_times} for slot in base_slots]}
+    return {"date": date, "slots": [{"time": slot, "available": slot not in booked_times} for slot in AVAILABLE_SLOTS]}
 
 
 @api_router.post("/appointments", response_model=Appointment)
