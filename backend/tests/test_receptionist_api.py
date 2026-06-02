@@ -34,11 +34,14 @@ def future_date(days_ahead: int = 2) -> str:
 
 
 def assert_dashboard_shape(data):
-    assert "appointments_today" in data and isinstance(data["appointments_today"], int)
-    assert "open_leads" in data and isinstance(data["open_leads"], int)
-    assert "total_conversations" in data and isinstance(data["total_conversations"], int)
-    assert "next_appointments" in data and isinstance(data["next_appointments"], list)
-    assert "recent_leads" in data and isinstance(data["recent_leads"], list)
+    int_fields = ["appointments_today", "open_leads", "total_conversations"]
+    list_fields = ["next_appointments", "recent_leads"]
+    for field in int_fields:
+        assert field in data
+        assert isinstance(data[field], int)
+    for field in list_fields:
+        assert field in data
+        assert isinstance(data[field], list)
     assert_no_mongo_id_keys(data)
 
 

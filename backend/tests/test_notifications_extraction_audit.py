@@ -52,6 +52,56 @@ def get_first_slot(api_client, date):
     return available[0]
 
 
+def admin_headers(api_client):
+    return login_headers(api_client, ADMIN_ACCESS_CODE)
+
+
+def request_protected_views(api_client, headers):
+    endpoints = ["/dashboard", "/leads", "/appointments", "/notifications", "/chat/sessions"]
+    responses = [api_client.get(f"{API_BASE}{endpoint}", headers=headers, timeout=20) for endpoint in endpoints]
+    assert all(response.status_code == 200 for response in responses)
+    return responses[-1].json()
+
+
+def view_chat_messages_if_available(api_client, headers, sessions_list):
+    if not sessions_list:
+        return
+    messages = api_client.get(
+        f"{API_BASE}/chat/messages/{sessions_list[0]['id']}", headers=headers, timeout=20
+    )
+    assert messages.status_code == 200
+
+
+def patch_profile_hours(api_client, headers):
+    profile = api_client.get(f"{API_BASE}/business-profile", timeout=20)
+    assert profile.status_code == 200
+    original_hours = profile.json()["hours"]
+    patch = api_client.patch(
+        f"{API_BASE}/business-profile",
+        headers=headers,
+        json={"hours": "Monday to Friday, 8:45 AM – 5:45 PM"},
+        timeout=20,
+    )
+    assert patch.status_code == 200
+    restore = api_client.patch(
+        f"{API_BASE}/business-profile",
+        headers=headers,
+        json={"hours": original_hours},
+        timeout=20,
+    )
+    assert restore.status_code == 200
+
+
+def assert_audit_categories(logs):
+    actions = {entry["action"] for entry in logs}
+    resources = {entry["resource"] for entry in logs}
+    for action in ["login", "view", "profile_update", "logout"]:
+        assert action in actions
+    for resource in ["dashboard", "leads", "appointments", "notifications"]:
+        assert resource in resources
+    assert "chat_messages" in resources or "chat_sessions" in resources
+
+
 class TestNotificationsExtractionAudit:
     def test_appointment_creates_in_app_notification(self, api_client):
         headers = login_headers(api_client, STAFF_ACCESS_CODE)
@@ -203,62 +253,13 @@ class TestNotificationsExtractionAudit:
         assert "staff-frontkind" in marked_item.get("read_by", [])
 
     def test_audit_logs_capture_required_activity_categories(self, api_client):
-        admin_headers = login_headers(api_client, ADMIN_ACCESS_CODE)
-
-        dashboard = api_client.get(f"{API_BASE}/dashboard", headers=admin_headers, timeout=20)
-        leads = api_client.get(f"{API_BASE}/leads", headers=admin_headers, timeout=20)
-        appointments = api_client.get(f"{API_BASE}/appointments", headers=admin_headers, timeout=20)
-        notifications = api_client.get(f"{API_BASE}/notifications", headers=admin_headers, timeout=20)
-        sessions = api_client.get(f"{API_BASE}/chat/sessions", headers=admin_headers, timeout=20)
-        assert dashboard.status_code == 200
-        assert leads.status_code == 200
-        assert appointments.status_code == 200
-        assert notifications.status_code == 200
-        assert sessions.status_code == 200
-
-        sessions_list = sessions.json()
-        if sessions_list:
-            messages = api_client.get(
-                f"{API_BASE}/chat/messages/{sessions_list[0]['id']}", headers=admin_headers, timeout=20
-            )
-            assert messages.status_code == 200
-
-        profile = api_client.get(f"{API_BASE}/business-profile", timeout=20)
-        assert profile.status_code == 200
-        original_hours = profile.json()["hours"]
-        temp_hours = "Monday to Friday, 8:45 AM – 5:45 PM"
-        patch = api_client.patch(
-            f"{API_BASE}/business-profile",
-            headers=admin_headers,
-            json={"hours": temp_hours},
-            timeout=20,
-        )
-        assert patch.status_code == 200
-        restore = api_client.patch(
-            f"{API_BASE}/business-profile",
-            headers=admin_headers,
-            json={"hours": original_hours},
-            timeout=20,
-        )
-        assert restore.status_code == 200
-
-        logout = api_client.post(f"{API_BASE}/auth/logout", headers=admin_headers, timeout=20)
+        headers = admin_headers(api_client)
+        sessions_list = request_protected_views(api_client, headers)
+        view_chat_messages_if_available(api_client, headers, sessions_list)
+        patch_profile_hours(api_client, headers)
+        logout = api_client.post(f"{API_BASE}/auth/logout", headers=headers, timeout=20)
         assert logout.status_code == 200
-
-        relog_headers = login_headers(api_client, ADMIN_ACCESS_CODE)
+        relog_headers = admin_headers(api_client)
         logs_response = api_client.get(f"{API_BASE}/audit-logs", headers=relog_headers, timeout=20)
         assert logs_response.status_code == 200
-        logs = logs_response.json()["logs"]
-
-        actions = {entry["action"] for entry in logs}
-        resources = {entry["resource"] for entry in logs}
-
-        assert "login" in actions
-        assert "view" in actions
-        assert "profile_update" in actions
-        assert "logout" in actions
-        assert "dashboard" in resources
-        assert "leads" in resources
-        assert "appointments" in resources
-        assert "notifications" in resources
-        assert "chat_messages" in resources or "chat_sessions" in resources
+        assert_audit_categories(logs_response.json()["logs"])

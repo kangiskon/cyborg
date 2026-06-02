@@ -382,6 +382,7 @@ async def get_current_staff(authorization: Optional[str] = Header(default=None))
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Staff login required.")
     token = authorization.replace("Bearer ", "", 1).strip()
+    staff: Optional[StaffUser] = None
     try:
         payload = jwt.decode(token, os.environ["STAFF_AUTH_SECRET"], algorithms=[JWT_ALGORITHM])
         staff = StaffUser(
@@ -392,6 +393,8 @@ async def get_current_staff(authorization: Optional[str] = Header(default=None))
         )
     except (JWTError, KeyError) as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired staff login.") from exc
+    if staff is None:
+        raise HTTPException(status_code=401, detail="Invalid staff login.")
     return staff
 
 

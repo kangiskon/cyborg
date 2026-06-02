@@ -55,6 +55,45 @@ def auth_header(api_client, access_code):
     return {"Authorization": f"Bearer {token}"}
 
 
+def get_available_time(api_client, date):
+    slots = api_client.get(f"{API_BASE}/appointments/slots", params={"date": date}, timeout=20)
+    assert slots.status_code == 200
+    slot_payload = slots.json()
+    assert slot_payload["date"] == date
+    available = [slot["time"] for slot in slot_payload["slots"] if slot["available"]]
+    assert available
+    return available[0]
+
+
+def create_public_appointment(api_client, date, time):
+    payload = {
+        "name": "TEST_Public Flow Booking",
+        "phone": "5550303000",
+        "email": "test.public.booking@example.com",
+        "service": "New client consultation",
+        "date": date,
+        "time": time,
+        "notes": "Public booking test",
+    }
+    response = api_client.post(f"{API_BASE}/appointments", json=payload, timeout=20)
+    assert response.status_code == 200
+    return payload, response.json()
+
+
+def create_public_lead(api_client):
+    payload = {
+        "name": "TEST_Public Flow Lead",
+        "phone": "5550404000",
+        "email": "test.public.lead@example.com",
+        "interest": "Need callback for service details",
+        "preferred_contact_time": "Tomorrow afternoon",
+        "source": "receptionist",
+    }
+    response = api_client.post(f"{API_BASE}/leads", json=payload, timeout=20)
+    assert response.status_code == 200
+    return payload, response.json()
+
+
 class TestStaffProtectedRoutes:
     """Verify Bearer token gate for protected dashboard/inbox routes."""
 
@@ -176,38 +215,10 @@ class TestPublicFlowsWithoutStaffToken:
 
     def test_public_appointment_and_lead_creation(self, api_client):
         date = future_date()
-        slots = api_client.get(f"{API_BASE}/appointments/slots", params={"date": date}, timeout=20)
-        assert slots.status_code == 200
-        slot_payload = slots.json()
-        assert slot_payload["date"] == date
-        available = [slot["time"] for slot in slot_payload["slots"] if slot["available"]]
-        assert available
-
-        appointment_payload = {
-            "name": "TEST_Public Flow Booking",
-            "phone": "5550303000",
-            "email": "test.public.booking@example.com",
-            "service": "New client consultation",
-            "date": date,
-            "time": available[0],
-            "notes": "Public booking test",
-        }
-        book = api_client.post(f"{API_BASE}/appointments", json=appointment_payload, timeout=20)
-        assert book.status_code == 200
-        booked = book.json()
+        appointment_payload, booked = create_public_appointment(api_client, date, get_available_time(api_client, date))
         assert booked["name"] == appointment_payload["name"]
         assert booked["time"] == appointment_payload["time"]
 
-        leads_payload = {
-            "name": "TEST_Public Flow Lead",
-            "phone": "5550404000",
-            "email": "test.public.lead@example.com",
-            "interest": "Need callback for service details",
-            "preferred_contact_time": "Tomorrow afternoon",
-            "source": "receptionist",
-        }
-        lead = api_client.post(f"{API_BASE}/leads", json=leads_payload, timeout=20)
-        assert lead.status_code == 200
-        created_lead = lead.json()
+        leads_payload, created_lead = create_public_lead(api_client)
         assert created_lead["name"] == leads_payload["name"]
         assert created_lead["interest"] == leads_payload["interest"]

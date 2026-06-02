@@ -30,7 +30,6 @@ import { Textarea } from "@/components/ui/textarea";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
-const STAFF_TOKEN_STORAGE_KEY = "frontkind_staff_token";
 
 const ICON_SIZE = {
   tiny: 15,
@@ -64,6 +63,7 @@ const NOTIFICATION_STATUSES = ["all", "unread", "read"];
 const AUDIT_ACTIONS = ["all", "login", "logout", "view", "profile_update", "notification_read", "lead_approved", "export"];
 const AUDIT_ROLES = ["all", "admin", "staff", "viewer", "system"];
 const TEST_ID_SANITIZER = /[^a-z0-9]+/g;
+const EMPTY_OBJECT = {};
 
 const quickPrompts = [
   "Do you have openings today?",
@@ -91,6 +91,14 @@ const createChatMessage = (role, content, prefix) => ({
 
 const authHeaders = (token) => ({ Authorization: `Bearer ${token}` });
 
+const clearStaffState = ({ setStaffAuth, setDashboard, setNotifications, setUnreadCount, setAuditLogs }) => {
+  setStaffAuth(null);
+  setDashboard(null);
+  setNotifications([]);
+  setUnreadCount(0);
+  setAuditLogs([]);
+};
+
 const buildStats = (dashboard) => [
   {
     icon: CalendarCheck,
@@ -114,6 +122,27 @@ const buildStats = (dashboard) => [
     testId: "conversation-count-stat",
   },
 ];
+
+const buildNotificationParams = (filters) => ({
+  notification_type: filters.type,
+  status: filters.status,
+});
+
+const buildAuditParams = (filters) => ({
+  action: filters.action,
+  actor_role: filters.actorRole,
+});
+
+const downloadBlob = (blobData, filename) => {
+  const url = window.URL.createObjectURL(new Blob([blobData], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
 
 function StatTile({ icon: Icon, label, value, detail, testId }) {
   return (
@@ -417,7 +446,6 @@ function StaffLoginPanel({ onLogin }) {
       const response = await axios.post(`${API}/auth/staff-login`, {
         access_code: form.accessCode,
       });
-      localStorage.setItem(STAFF_TOKEN_STORAGE_KEY, response.data.token);
       onLogin({ token: response.data.token, staff: response.data.staff });
       setForm(EMPTY_STAFF_LOGIN);
       toast.success("Staff access granted.");
@@ -578,6 +606,28 @@ function SuggestedLeadActions({ lead, staffAuth, refreshDashboard }) {
   );
 }
 
+function EditableProfileValue({ field, value, editing, canEdit, onStartEdit, onSave, testId }) {
+  if (editing === field) {
+    return (
+      <Input
+        data-testid={`${testId}-input`}
+        autoFocus
+        defaultValue={value}
+        onBlur={(event) => onSave(field, event.target.value)}
+        onKeyDown={(event) => event.key === "Enter" && onSave(field, event.currentTarget.value)}
+      />
+    );
+  }
+  if (canEdit) {
+    return (
+      <button data-testid={`${testId}-button`} type="button" onClick={() => onStartEdit(field)}>
+        {value}
+      </button>
+    );
+  }
+  return <strong data-testid={`${testId}-readonly`}>{value}</strong>;
+}
+
 function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, unreadCount, auditLogs, onMarkRead, refreshDashboard, notificationFilters, onNotificationFiltersChange, auditFilters, onAuditFiltersChange, onAuditExport }) {
   if (!staffAuth?.token) {
     return <StaffLoginPanel onLogin={onLogin} />;
@@ -681,35 +731,11 @@ function ProfilePanel({ profile, setProfile, staffAuth }) {
       <div className="profile-stack" data-testid="profile-field-list">
         <div className="profile-field" data-testid="profile-business-name-field">
           <span data-testid="profile-business-name-label">Business</span>
-          {editing === "business_name" ? (
-            <Input
-              data-testid="profile-business-name-input"
-              autoFocus
-              defaultValue={profile.business_name}
-              onBlur={(event) => saveProfileField("business_name", event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && saveProfileField("business_name", event.currentTarget.value)}
-            />
-          ) : canEditProfile ? (
-            <button data-testid="profile-business-name-button" type="button" onClick={() => setEditing("business_name")}>{profile.business_name}</button>
-          ) : (
-            <strong data-testid="profile-business-name-readonly">{profile.business_name}</strong>
-          )}
+          <EditableProfileValue field="business_name" value={profile.business_name} editing={editing} canEdit={canEditProfile} onStartEdit={setEditing} onSave={saveProfileField} testId="profile-business-name" />
         </div>
         <div className="profile-field" data-testid="profile-hours-field">
           <span data-testid="profile-hours-label">Hours</span>
-          {editing === "hours" ? (
-            <Input
-              data-testid="profile-hours-input"
-              autoFocus
-              defaultValue={profile.hours}
-              onBlur={(event) => saveProfileField("hours", event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && saveProfileField("hours", event.currentTarget.value)}
-            />
-          ) : canEditProfile ? (
-            <button data-testid="profile-hours-button" type="button" onClick={() => setEditing("hours")}>{profile.hours}</button>
-          ) : (
-            <strong data-testid="profile-hours-readonly">{profile.hours}</strong>
-          )}
+          <EditableProfileValue field="hours" value={profile.hours} editing={editing} canEdit={canEditProfile} onStartEdit={setEditing} onSave={saveProfileField} testId="profile-hours" />
         </div>
         <div className="service-pills" data-testid="profile-service-pill-list">
           {profile.business_types.map((type) => (
@@ -750,7 +776,9 @@ const Home = () => {
     }
   }, []);
 
-  const loadProtectedData = useCallback(async (token) => {
+  const loadProtectedData = useCallback(async (token, options = EMPTY_OBJECT) => {
+    const activeNotificationFilters = options.notificationFilters || DEFAULT_NOTIFICATION_FILTERS;
+    const activeAuditFilters = options.auditFilters || DEFAULT_AUDIT_FILTERS;
     if (!token) {
       setDashboard(null);
       return;
@@ -761,10 +789,7 @@ const Home = () => {
       });
       const notificationResponse = await axios.get(`${API}/notifications`, {
         headers: authHeaders(token),
-        params: {
-          notification_type: notificationFilters.type,
-          status: notificationFilters.status,
-        },
+        params: buildNotificationParams(activeNotificationFilters),
       });
       setDashboard(dashboardResponse.data);
       setNotifications(notificationResponse.data.notifications);
@@ -776,10 +801,7 @@ const Home = () => {
       if (meResponse.data.role === "admin") {
         const auditResponse = await axios.get(`${API}/audit-logs`, {
           headers: authHeaders(token),
-          params: {
-            action: auditFilters.action,
-            actor_role: auditFilters.actorRole,
-          },
+          params: buildAuditParams(activeAuditFilters),
         });
         setAuditLogs(auditResponse.data.logs);
       } else {
@@ -787,66 +809,37 @@ const Home = () => {
       }
     } catch (error) {
       if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
-        setStaffAuth(null);
-        setDashboard(null);
-        setNotifications([]);
-        setUnreadCount(0);
-        setAuditLogs([]);
+        clearStaffState({ setStaffAuth, setDashboard, setNotifications, setUnreadCount, setAuditLogs });
         toast.error("Staff session expired. Please log in again.");
       } else {
         toast.error("Could not load staff inbox.");
       }
     }
-  }, [auditFilters.action, auditFilters.actorRole, notificationFilters.status, notificationFilters.type]);
+  }, []);
 
   useEffect(() => {
     loadPublicData();
   }, [loadPublicData]);
 
-  useEffect(() => {
-    const savedToken = localStorage.getItem(STAFF_TOKEN_STORAGE_KEY);
-    if (!savedToken) return;
-
-    const restoreStaffSession = async () => {
-      try {
-        const response = await axios.get(`${API}/auth/me`, {
-          headers: authHeaders(savedToken),
-        });
-        setStaffAuth({ token: savedToken, staff: response.data });
-        await loadProtectedData(savedToken);
-      } catch (error) {
-        localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
-      }
-    };
-
-    restoreStaffSession();
-  }, [loadProtectedData]);
-
   const handleStaffLogin = useCallback((nextStaffAuth) => {
     setStaffAuth(nextStaffAuth);
-    loadProtectedData(nextStaffAuth.token);
-  }, [loadProtectedData]);
+    loadProtectedData(nextStaffAuth.token, { notificationFilters, auditFilters });
+  }, [auditFilters, loadProtectedData, notificationFilters]);
 
   const handleStaffLogout = useCallback(() => {
     const token = staffAuth?.token;
     if (token) {
       axios.post(`${API}/auth/logout`, {}, { headers: authHeaders(token) }).catch(() => {});
     }
-    localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
-    setStaffAuth(null);
-    setDashboard(null);
-    setNotifications([]);
-    setUnreadCount(0);
-    setAuditLogs([]);
+    clearStaffState({ setStaffAuth, setDashboard, setNotifications, setUnreadCount, setAuditLogs });
     setNotificationFilters(DEFAULT_NOTIFICATION_FILTERS);
     setAuditFilters(DEFAULT_AUDIT_FILTERS);
     toast.success("Staff logged out.");
   }, [staffAuth?.token]);
 
   const refreshDashboard = useCallback(() => {
-    loadProtectedData(staffAuth?.token);
-  }, [loadProtectedData, staffAuth?.token]);
+    loadProtectedData(staffAuth?.token, { notificationFilters, auditFilters });
+  }, [auditFilters, loadProtectedData, notificationFilters, staffAuth?.token]);
 
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!staffAuth?.token) return;
@@ -865,20 +858,10 @@ const Home = () => {
     try {
       const response = await axios.get(`${API}/audit-logs/export`, {
         headers: authHeaders(staffAuth.token),
-        params: {
-          action: auditFilters.action,
-          actor_role: auditFilters.actorRole,
-        },
+        params: buildAuditParams(auditFilters),
         responseType: "blob",
       });
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: "text/csv" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "frontkind-audit-export.csv";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      downloadBlob(response.data, "frontkind-audit-export.csv");
       toast.success("Audit CSV exported.");
       refreshDashboard();
     } catch (error) {
@@ -888,7 +871,7 @@ const Home = () => {
 
   useEffect(() => {
     if (staffAuth?.token) {
-      loadProtectedData(staffAuth.token);
+      loadProtectedData(staffAuth.token, { notificationFilters, auditFilters });
     }
   }, [auditFilters, loadProtectedData, notificationFilters, staffAuth?.token]);
 
