@@ -466,7 +466,7 @@ function StaffBadge({ staffAuth, onLogout }) {
   );
 }
 
-function NotificationCenter({ notifications, unreadCount, onMarkRead }) {
+function NotificationCenter({ notifications, unreadCount, onMarkRead, staffId }) {
   return (
     <div className="notification-center" data-testid="notification-center-panel">
       <div className="mini-heading" data-testid="notification-center-heading">
@@ -478,7 +478,7 @@ function NotificationCenter({ notifications, unreadCount, onMarkRead }) {
       ) : (
         notifications.slice(0, 5).map((item) => (
           <button
-            className={`notification-item ${item.read_by?.length ? "read" : "unread"}`}
+            className={`notification-item ${item.read_by?.includes(staffId) ? "read" : "unread"}`}
             data-testid={`notification-item-${item.id}`}
             type="button"
             key={item.id}
@@ -551,7 +551,7 @@ function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, un
         </div>
         <Headphones data-testid="inbox-panel-icon" size={ICON_SIZE.panel} />
       </div>
-      <NotificationCenter notifications={notifications} unreadCount={unreadCount} onMarkRead={onMarkRead} />
+      <NotificationCenter notifications={notifications} unreadCount={unreadCount} onMarkRead={onMarkRead} staffId={staffAuth.staff.id} />
       <div className="handoff-list" data-testid="appointments-handoff-list">
         <h3 data-testid="appointments-handoff-title">Upcoming appointments</h3>
         {(dashboard?.next_appointments || []).length === 0 ? (

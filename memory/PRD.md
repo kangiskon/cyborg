@@ -57,9 +57,9 @@
 - Add analytics for conversion, missed questions, and popular services.
 
 ## Next Tasks
-1. Add notification handoff for appointments and callback requests.
-2. Add automatic chat-to-lead extraction.
-3. Add audit log for staff access and profile edits.
+1. Configure real Resend/Twilio credentials when ready for email/SMS alerts.
+2. Add notification paging and filters.
+3. Add staff activity export for compliance review.
 
 
 ## Code Quality Fixes — 2026-06-02
@@ -77,3 +77,13 @@
 - Admin can edit business profile; Staff can access leads; Viewer can access dashboard/inbox summaries.
 - Frontend now shows a staff login panel for protected inbox access and supports logout/session restoration.
 - Verified with backend regression tests, browser smoke test, and testing-agent role protection checks.
+
+
+## Notifications, Chat-to-Lead Extraction & Audit Logs — 2026-06-02
+- Added in-app notification center for appointment bookings, lead captures, lead suggestions, and approved suggestions.
+- Added automatic chat-to-lead extraction when visitor messages include contact info and appointment/callback intent.
+- Suggested chat leads require Staff/Admin approval before becoming active new leads.
+- Added staff activity audit logs for login/logout, viewing protected resources, profile edits, lead approval, and system-created visitor events.
+- Added Admin-only audit log panel in the receptionist inbox.
+- Real Resend email and Twilio SMS were intentionally deferred per user choice; current notifications are in-app only.
+- Verified with backend regression, browser smoke tests, and testing-agent validation.
