@@ -1,0 +1,73 @@
+{
+  "theme": "light",
+  "archetype": "1 (Organic & Earthy)",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Figtree",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight",
+      "h3": "text-xl sm:text-2xl leading-snug",
+      "h4": "text-lg sm:text-xl",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm text-stone-600",
+      "overline": "uppercase text-xs tracking-[0.2em] font-medium"
+    }
+  },
+  "colors": {
+    "background": "bg-[#F9F8F6] text-[#1A251F]",
+    "surface": "bg-[#F3F0EB]",
+    "primary": "bg-[#2C4C3B] text-white hover:bg-[#1A3025]",
+    "accent": "bg-[#C87965] text-white hover:bg-[#A86150]",
+    "border": "border-stone-200",
+    "text": {
+      "main": "text-[#1A251F]",
+      "muted": "text-stone-600"
+    }
+  },
+  "spacing_and_layout": {
+    "dashboard_grid": "Mode B 'Control Room' - grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "marketing_grid": "Mode A 'Tetris' Grid - asymmetrical layouts gap-8 to gap-12",
+    "padding": "Generous spacing philosophy (p-8 to p-12 for containers)",
+    "border_radius": "Subtle roundness, max 12px for cards, max 24px for chat bubbles"
+  },
+  "components": {
+    "buttons": "Rounded-lg or rounded-full, distinct hover states. MUST NOT use default blue.",
+    "cards": "Flat background (bg-[#F3F0EB]), 1px subtle border (border-stone-200), no heavy dropshadow by default. Hover adds slight lift (-translate-y-1) and shadow-sm.",
+    "chat_ui": "Hybrid input (text + quick replies). User bubbles: rounded-l-2xl rounded-tr-2xl bg-[#E8E3DA] text-[#1A251F]. AI bubbles: rounded-r-2xl rounded-tl-2xl bg-[#2C4C3B] text-white.",
+    "navigation": "Crystal Glassmorphism over hero images (bg-[#F9F8F6]/80 backdrop-blur-xl border-b border-stone-200/50)",
+    "forms": "Use Shadcn components but strip default 'Vercel' look. Inputs use bg-white border-stone-200 focus:ring-[#2C4C3B]"
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "chat_bubbles": "framer-motion entrance: initial={opacity: 0, y: 10} animate={opacity: 1, y: 0}"
+  },
+  "icons_and_assets": {
+    "icon_library": "lucide-react",
+    "images": {
+      "hero_background": {
+        "url": "https://images.unsplash.com/photo-1524207874394-5ec7c8c8e1a6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHNhbmQlMjB0ZXh0dXJlfGVufDB8fHx8MTc4MDQ0MDIyNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract warm sand texture, use for soft backgrounds with low opacity"
+      },
+      "clinic_spa_interior": {
+        "url": "https://images.unsplash.com/photo-1773924093206-9a433a14bb44?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwyfHxzcGElMjB3ZWxsbmVzcyUyMGludGVyaW9yfGVufDB8fHx8MTc4MDQ0MDIyNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Warm, sunny spa interior for business profile or marketing section"
+      },
+      "business_owner": {
+        "url": "https://images.unsplash.com/photo-1630939687530-241d630735df?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwyfHxidXNpbmVzcyUyMG93bmVyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzgwNDQwMjI2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Business owner portrait for testimonials or onboarding preview"
+      }
+    }
+  },
+  "accessibility": {
+    "contrast": "Ensure text over images uses backdrop-blur or gradient overlay.",
+    "testing": "All interactive elements MUST include data-testid attribute in kebab-case (e.g. data-testid='chat-submit-btn')."
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Archetype 1 (Organic & Earthy) color palette. Do NOT use default blue or purple colors.",
+    "Do NOT use 'Inter' for headings. Use 'Outfit' for headings and 'Figtree' for body fonts.",
+    "For the AI Chatbot interface, prioritize organic, rounded shapes and a calm aesthetic instead of a 'tech/neon' look.",
+    "Ensure all buttons, inputs, and links have data-testid attributes for testing.",
+    "Dashboard should be dense but approachable (Control Room grid style), utilizing muted clay and stone colors."
+  ]
+}
