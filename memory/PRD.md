@@ -58,8 +58,8 @@
 
 ## Next Tasks
 1. Configure real Resend/Twilio credentials when ready for email/SMS alerts.
-2. Add notification paging and filters.
-3. Add staff activity export for compliance review.
+2. Add notification paging for larger inboxes.
+3. Add scheduled compliance export emails once email credentials are configured.
 
 
 ## Code Quality Fixes — 2026-06-02
@@ -87,3 +87,13 @@
 - Added Admin-only audit log panel in the receptionist inbox.
 - Real Resend email and Twilio SMS were intentionally deferred per user choice; current notifications are in-app only.
 - Verified with backend regression, browser smoke tests, and testing-agent validation.
+
+
+## Notification Filters & Audit Export — 2026-06-02
+- Added notification filters by type and read/unread status.
+- Updated unread notification count to respect the current staff user and selected type filter.
+- Added Admin audit filters by action and actor role.
+- Added Admin-only CSV export endpoint for compliance review.
+- Added frontend export button that downloads filtered audit logs as CSV.
+- Verified role restrictions: Staff/Viewer cannot access audit export.
+- Verified with backend regression, browser smoke test, and testing-agent compliance validation.
