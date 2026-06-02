@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import axios from "axios";
@@ -27,6 +27,32 @@ import { Textarea } from "@/components/ui/textarea";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+const ICON_SIZE = {
+  tiny: 15,
+  inputAction: 17,
+  action: 18,
+  cardlet: 19,
+  stat: 20,
+  panel: 24,
+};
+
+const STAT_TILE_MOTION = {
+  initial: { opacity: 0, y: 14 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.45 },
+};
+
+const CHAT_MESSAGE_MOTION = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0 },
+};
+
+const SCROLL_INTO_VIEW_OPTIONS = { behavior: "smooth" };
+const DEFAULT_SERVICES = ["New client consultation"];
+const EMPTY_LEAD = { name: "", phone: "", email: "", interest: "", preferred_contact_time: "" };
+const TEST_ID_SANITIZER = /[^a-z0-9]+/g;
+
 const quickPrompts = [
   "Do you have openings today?",
   "I need a callback from the team.",
@@ -43,17 +69,49 @@ const initialMessage = {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+const toTestId = (value) => value.toLowerCase().replace(TEST_ID_SANITIZER, "-");
+
+const createChatMessage = (role, content, prefix) => ({
+  id: `${prefix}-${Date.now()}`,
+  role,
+  content,
+});
+
+const buildStats = (dashboard) => [
+  {
+    icon: CalendarCheck,
+    label: "Appointments today",
+    value: dashboard?.appointments_today ?? "—",
+    detail: "Confirmed through reception",
+    testId: "appointments-today-stat",
+  },
+  {
+    icon: PhoneCall,
+    label: "Open leads",
+    value: dashboard?.open_leads ?? "—",
+    detail: "Waiting for staff callback",
+    testId: "open-leads-stat",
+  },
+  {
+    icon: MessageCircle,
+    label: "Conversations",
+    value: dashboard?.total_conversations ?? "—",
+    detail: "Persistent chat sessions",
+    testId: "conversation-count-stat",
+  },
+];
+
 function StatTile({ icon: Icon, label, value, detail, testId }) {
   return (
     <motion.div
       data-testid={testId}
       className="stat-tile"
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45 }}
+      initial={STAT_TILE_MOTION.initial}
+      animate={STAT_TILE_MOTION.animate}
+      transition={STAT_TILE_MOTION.transition}
     >
       <div className="stat-icon" data-testid={`${testId}-icon`}>
-        <Icon size={20} />
+        <Icon size={ICON_SIZE.stat} />
       </div>
       <p data-testid={`${testId}-label`}>{label}</p>
       <strong data-testid={`${testId}-value`}>{value}</strong>
@@ -68,17 +126,13 @@ function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView(SCROLL_INTO_VIEW_OPTIONS);
   }, [messages]);
 
-  const sendMessage = async (text = input) => {
+  const sendMessage = useCallback(async (text = input) => {
     const clean = text.trim();
     if (!clean || sending) return;
-    const visitorMessage = {
-      id: `visitor-${Date.now()}`,
-      role: "visitor",
-      content: clean,
-    };
+    const visitorMessage = createChatMessage("visitor", clean, "visitor");
     setMessages((current) => [...current, visitorMessage]);
     setInput("");
     setSending(true);
@@ -90,25 +144,22 @@ function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
       setSessionId(response.data.session_id);
       setMessages((current) => [
         ...current,
-        {
-          id: `receptionist-${Date.now()}`,
-          role: "receptionist",
-          content: response.data.message,
-        },
+        createChatMessage("receptionist", response.data.message, "receptionist"),
       ]);
     } catch (error) {
       toast.error("The receptionist could not reply just now.");
       setMessages((current) => [
         ...current,
-        {
-          id: `error-${Date.now()}`,
-          role: "receptionist",
-          content: "I’m having trouble connecting. Please try again in a moment.",
-        },
+        createChatMessage("receptionist", "I’m having trouble connecting. Please try again in a moment.", "error"),
       ]);
     } finally {
       setSending(false);
     }
+  }, [input, sending, sessionId, setMessages, setSessionId]);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    sendMessage();
   };
 
   return (
@@ -130,12 +181,12 @@ function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
               data-testid={`chat-message-${message.id}`}
               key={message.id}
               className={`message-row ${message.role}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
+              initial={CHAT_MESSAGE_MOTION.initial}
+              animate={CHAT_MESSAGE_MOTION.animate}
+              exit={CHAT_MESSAGE_MOTION.exit}
             >
               <div className="message-avatar" data-testid={`chat-message-${message.id}-avatar`}>
-                {message.role === "visitor" ? <UserRound size={15} /> : <Bot size={15} />}
+                {message.role === "visitor" ? <UserRound size={ICON_SIZE.tiny} /> : <Bot size={ICON_SIZE.tiny} />}
               </div>
               <p data-testid={`chat-message-${message.id}-content`}>{message.content}</p>
             </motion.div>
@@ -153,7 +204,7 @@ function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
         {quickPrompts.map((prompt) => (
           <button
             type="button"
-            data-testid={`quick-prompt-${prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+            data-testid={`quick-prompt-${toTestId(prompt)}`}
             key={prompt}
             onClick={() => sendMessage(prompt)}
           >
@@ -165,10 +216,7 @@ function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
       <form
         data-testid="chat-input-form"
         className="chat-input-row"
-        onSubmit={(event) => {
-          event.preventDefault();
-          sendMessage();
-        }}
+        onSubmit={handleSubmit}
       >
         <Input
           data-testid="chat-message-input"
@@ -177,7 +225,7 @@ function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
           placeholder="Ask a question or request an appointment..."
         />
         <Button data-testid="chat-submit-button" type="submit" disabled={sending}>
-          <Send size={17} />
+          <Send size={ICON_SIZE.inputAction} />
           Send
         </Button>
       </form>
@@ -198,7 +246,7 @@ function BookingPanel({ profile, refreshDashboard }) {
   const [slots, setSlots] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const loadSlots = async (date) => {
+  const loadSlots = useCallback(async (date) => {
     try {
       const response = await axios.get(`${API}/appointments/slots`, { params: { date } });
       setSlots(response.data.slots);
@@ -207,16 +255,15 @@ function BookingPanel({ profile, refreshDashboard }) {
     } catch (error) {
       toast.error("Could not load appointment slots.");
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadSlots(form.date);
-  }, []);
+  }, [form.date, loadSlots]);
 
-  const updateField = (field, value) => {
+  const updateField = useCallback((field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
-    if (field === "date") loadSlots(value);
-  };
+  }, []);
 
   const submitBooking = async (event) => {
     event.preventDefault();
@@ -229,7 +276,7 @@ function BookingPanel({ profile, refreshDashboard }) {
       await axios.post(`${API}/appointments`, form);
       toast.success("Appointment confirmed.");
       setForm((current) => ({ ...current, name: "", phone: "", email: "", notes: "" }));
-      loadSlots(form.date);
+      await loadSlots(form.date);
       refreshDashboard();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Could not book that time.");
@@ -245,7 +292,7 @@ function BookingPanel({ profile, refreshDashboard }) {
           <span data-testid="booking-panel-kicker">Appointment flow</span>
           <h2 data-testid="booking-panel-title">Book a visit</h2>
         </div>
-        <CalendarCheck data-testid="booking-panel-icon" size={24} />
+        <CalendarCheck data-testid="booking-panel-icon" size={ICON_SIZE.panel} />
       </div>
 
       <form className="booking-form" data-testid="appointment-booking-form" onSubmit={submitBooking}>
@@ -269,8 +316,8 @@ function BookingPanel({ profile, refreshDashboard }) {
             value={form.service}
             onChange={(event) => updateField("service", event.target.value)}
           >
-            {(profile?.services || ["New client consultation"]).map((service) => (
-              <option data-testid={`booking-service-option-${service.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`} key={service} value={service}>{service}</option>
+            {(profile?.services || DEFAULT_SERVICES).map((service) => (
+              <option data-testid={`booking-service-option-${toTestId(service)}`} key={service} value={service}>{service}</option>
             ))}
           </select>
         </div>
@@ -294,7 +341,7 @@ function BookingPanel({ profile, refreshDashboard }) {
           <Textarea data-testid="booking-notes-input" id="booking-notes" value={form.notes} onChange={(event) => updateField("notes", event.target.value)} placeholder="Anything the team should know?" />
         </div>
         <Button data-testid="booking-submit-button" className="primary-action" type="submit" disabled={submitting}>
-          <Check size={18} /> Confirm appointment
+          <Check size={ICON_SIZE.action} /> Confirm appointment
         </Button>
       </form>
     </section>
@@ -302,7 +349,7 @@ function BookingPanel({ profile, refreshDashboard }) {
 }
 
 function LeadPanel({ refreshDashboard }) {
-  const [lead, setLead] = useState({ name: "", phone: "", email: "", interest: "", preferred_contact_time: "" });
+  const [lead, setLead] = useState(EMPTY_LEAD);
   const [submitting, setSubmitting] = useState(false);
 
   const updateLead = (field, value) => setLead((current) => ({ ...current, [field]: value }));
@@ -313,7 +360,7 @@ function LeadPanel({ refreshDashboard }) {
     try {
       await axios.post(`${API}/leads`, lead);
       toast.success("Callback request saved.");
-      setLead({ name: "", phone: "", email: "", interest: "", preferred_contact_time: "" });
+      setLead(EMPTY_LEAD);
       refreshDashboard();
     } catch (error) {
       toast.error("Could not save the callback request.");
@@ -329,7 +376,7 @@ function LeadPanel({ refreshDashboard }) {
           <span data-testid="lead-panel-kicker">Callback queue</span>
           <h2 data-testid="lead-panel-title">Capture lead details</h2>
         </div>
-        <PhoneCall data-testid="lead-panel-icon" size={24} />
+        <PhoneCall data-testid="lead-panel-icon" size={ICON_SIZE.panel} />
       </div>
       <form className="lead-form" data-testid="lead-capture-form" onSubmit={submitLead}>
         <Input data-testid="lead-name-input" placeholder="Full name" value={lead.name} onChange={(event) => updateLead("name", event.target.value)} required />
@@ -338,7 +385,7 @@ function LeadPanel({ refreshDashboard }) {
         <Input data-testid="lead-contact-time-input" placeholder="Preferred callback time" value={lead.preferred_contact_time} onChange={(event) => updateLead("preferred_contact_time", event.target.value)} />
         <Textarea data-testid="lead-interest-input" placeholder="What do they need help with?" value={lead.interest} onChange={(event) => updateLead("interest", event.target.value)} required />
         <Button data-testid="lead-submit-button" className="secondary-action" type="submit" disabled={submitting}>
-          <Inbox size={18} /> Save callback request
+          <Inbox size={ICON_SIZE.action} /> Save callback request
         </Button>
       </form>
     </section>
@@ -353,7 +400,7 @@ function InboxPanel({ dashboard }) {
           <span data-testid="inbox-panel-kicker">Today’s handoff</span>
           <h2 data-testid="inbox-panel-title">Reception inbox</h2>
         </div>
-        <Headphones data-testid="inbox-panel-icon" size={24} />
+        <Headphones data-testid="inbox-panel-icon" size={ICON_SIZE.panel} />
       </div>
       <div className="handoff-list" data-testid="appointments-handoff-list">
         <h3 data-testid="appointments-handoff-title">Upcoming appointments</h3>
@@ -394,7 +441,7 @@ function InboxPanel({ dashboard }) {
 function ProfilePanel({ profile, setProfile }) {
   const [editing, setEditing] = useState(null);
 
-  const saveProfileField = async (field, value) => {
+  const saveProfileField = useCallback(async (field, value) => {
     const nextProfile = { ...profile, [field]: value };
     setProfile(nextProfile);
     setEditing(null);
@@ -404,7 +451,7 @@ function ProfilePanel({ profile, setProfile }) {
     } catch (error) {
       toast.error("Could not update profile.");
     }
-  };
+  }, [profile, setProfile]);
 
   if (!profile) return null;
 
@@ -415,7 +462,7 @@ function ProfilePanel({ profile, setProfile }) {
           <span data-testid="profile-panel-kicker">Reception knowledge</span>
           <h2 data-testid="profile-panel-title">Business profile</h2>
         </div>
-        <Building2 data-testid="profile-panel-icon" size={24} />
+        <Building2 data-testid="profile-panel-icon" size={ICON_SIZE.panel} />
       </div>
       <div className="profile-stack" data-testid="profile-field-list">
         <div className="profile-field" data-testid="profile-business-name-field">
@@ -448,7 +495,7 @@ function ProfilePanel({ profile, setProfile }) {
         </div>
         <div className="service-pills" data-testid="profile-service-pill-list">
           {profile.business_types.map((type) => (
-            <span data-testid={`profile-business-type-${type.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`} key={type}>{type}</span>
+            <span data-testid={`profile-business-type-${toTestId(type)}`} key={type}>{type}</span>
           ))}
         </div>
         <div className="faq-mini" data-testid="profile-faq-list">
@@ -470,7 +517,7 @@ const Home = () => {
   const [messages, setMessages] = useState([initialMessage]);
   const [sessionId, setSessionId] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [profileResponse, dashboardResponse] = await Promise.all([
         axios.get(`${API}/business-profile`),
@@ -481,45 +528,20 @@ const Home = () => {
     } catch (error) {
       toast.error("Could not load receptionist workspace.");
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
-  const stats = useMemo(
-    () => [
-      {
-        icon: CalendarCheck,
-        label: "Appointments today",
-        value: dashboard?.appointments_today ?? "—",
-        detail: "Confirmed through reception",
-        testId: "appointments-today-stat",
-      },
-      {
-        icon: PhoneCall,
-        label: "Open leads",
-        value: dashboard?.open_leads ?? "—",
-        detail: "Waiting for staff callback",
-        testId: "open-leads-stat",
-      },
-      {
-        icon: MessageCircle,
-        label: "Conversations",
-        value: dashboard?.total_conversations ?? "—",
-        detail: "Persistent chat sessions",
-        testId: "conversation-count-stat",
-      },
-    ],
-    [dashboard],
-  );
+  const stats = useMemo(() => buildStats(dashboard), [dashboard]);
 
   return (
     <div className="reception-app" data-testid="ai-receptionist-app">
       <Toaster richColors position="top-right" />
       <nav className="top-nav" data-testid="top-navigation">
         <a data-testid="brand-home-link" href="/" className="brand-mark">
-          <span data-testid="brand-icon"><Sparkles size={18} /></span>
+          <span data-testid="brand-icon"><Sparkles size={ICON_SIZE.action} /></span>
           <strong data-testid="brand-name">Frontkind</strong>
         </a>
         <div className="nav-actions" data-testid="navigation-actions">
@@ -532,13 +554,13 @@ const Home = () => {
       <main data-testid="main-workspace">
         <section className="hero-band" data-testid="hero-section">
           <div className="hero-copy" data-testid="hero-copy">
-            <span className="eyebrow" data-testid="hero-eyebrow"><Clock3 size={15} /> Always-on front desk</span>
+            <span className="eyebrow" data-testid="hero-eyebrow"><Clock3 size={ICON_SIZE.tiny} /> Always-on front desk</span>
             <h1 data-testid="hero-title">A calm AI receptionist for every small business front door.</h1>
             <p data-testid="hero-subtitle">
               Answer questions, collect warm leads, and confirm appointments from one focused reception workspace.
             </p>
             <div className="hero-actions" data-testid="hero-actions">
-              <a data-testid="hero-start-chat-link" href="#chat" className="hero-primary">Start greeting visitors <ArrowRight size={18} /></a>
+              <a data-testid="hero-start-chat-link" href="#chat" className="hero-primary">Start greeting visitors <ArrowRight size={ICON_SIZE.action} /></a>
               <a data-testid="hero-booking-link" href="#booking" className="hero-secondary">Open booking desk</a>
             </div>
           </div>
@@ -549,7 +571,7 @@ const Home = () => {
               alt="Warm reception interior"
             />
             <div className="hero-cardlet" data-testid="hero-live-cardlet">
-              <Bot size={19} />
+              <Bot size={ICON_SIZE.cardlet} />
               <span data-testid="hero-live-cardlet-text">Greeting visitor · collecting details</span>
             </div>
           </div>

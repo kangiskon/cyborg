@@ -61,3 +61,11 @@
 1. Add staff login before exposing inbox data beyond demo use.
 2. Add notification handoff for appointments and callback requests.
 3. Add automatic chat-to-lead extraction.
+
+
+## Code Quality Fixes — 2026-06-02
+- Fixed React hook dependency issues using stable callbacks and corrected effect dependencies.
+- Extracted repeated animation, icon-size, timing, and test-id values into named constants.
+- Wrapped production console warning behind a development-only guard.
+- Simplified backend regression tests with helper functions and removed problematic literal comparison style.
+- Verified with JavaScript lint, Python lint, backend regression tests, and frontend smoke test.

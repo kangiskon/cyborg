@@ -26,6 +26,68 @@ BASE_URL = _get_base_url()
 API_BASE = f"{BASE_URL}/api"
 
 
+def future_date(days_ahead: int = 2) -> str:
+    return (datetime.now(timezone.utc).date() + timedelta(days=days_ahead)).isoformat()
+
+
+def assert_dashboard_shape(data):
+    assert "appointments_today" in data and isinstance(data["appointments_today"], int)
+    assert "open_leads" in data and isinstance(data["open_leads"], int)
+    assert "total_conversations" in data and isinstance(data["total_conversations"], int)
+    assert "next_appointments" in data and isinstance(data["next_appointments"], list)
+    assert "recent_leads" in data and isinstance(data["recent_leads"], list)
+    assert "_id" not in str(data)
+
+
+def get_dashboard(api_client):
+    response = api_client.get(f"{API_BASE}/dashboard", timeout=20)
+    assert response.status_code == 200
+    return response.json()
+
+
+def get_slots(api_client, date):
+    response = api_client.get(
+        f"{API_BASE}/appointments/slots", params={"date": date}, timeout=20
+    )
+    assert response.status_code == 200
+    return response.json()["slots"]
+
+
+def first_available_time(slots):
+    available_times = [slot["time"] for slot in slots if slot["available"]]
+    assert available_times
+    return available_times[0]
+
+
+def create_booking(api_client, date, time):
+    payload = {
+        "name": "TEST_Agent Booking",
+        "phone": "5550101000",
+        "email": "test.booking@example.com",
+        "service": "New client consultation",
+        "date": date,
+        "time": time,
+        "notes": "Created by automated API test",
+    }
+    response = api_client.post(f"{API_BASE}/appointments", json=payload, timeout=20)
+    assert response.status_code == 200
+    return payload, response.json()
+
+
+def create_lead(api_client):
+    payload = {
+        "name": "TEST_Agent Lead",
+        "phone": "5550202000",
+        "email": "test.lead@example.com",
+        "interest": "Need callback for consultation",
+        "preferred_contact_time": "Tomorrow afternoon",
+        "source": "receptionist",
+    }
+    response = api_client.post(f"{API_BASE}/leads", json=payload, timeout=20)
+    assert response.status_code == 200
+    return payload, response.json()
+
+
 @pytest.fixture
 def api_client():
     session = requests.Session()
@@ -46,15 +108,7 @@ class TestReceptionistApi:
         assert isinstance(data["business_types"], list) and len(data["business_types"]) > 0
 
     def test_dashboard_response_and_no_objectid_serialization(self, api_client):
-        response = api_client.get(f"{API_BASE}/dashboard", timeout=20)
-        assert response.status_code == 200
-        data = response.json()
-        assert "appointments_today" in data and isinstance(data["appointments_today"], int)
-        assert "open_leads" in data and isinstance(data["open_leads"], int)
-        assert "total_conversations" in data and isinstance(data["total_conversations"], int)
-        assert "next_appointments" in data and isinstance(data["next_appointments"], list)
-        assert "recent_leads" in data and isinstance(data["recent_leads"], list)
-        assert "_id" not in str(data)
+        assert_dashboard_shape(get_dashboard(api_client))
 
     def test_chat_message_returns_graceful_response(self, api_client):
         payload = {
@@ -68,62 +122,26 @@ class TestReceptionistApi:
         assert isinstance(data.get("message"), str) and data["message"].strip()
         assert data.get("mode") in ["live", "mocked"]
 
-    def test_appointment_slots_booking_and_unavailability(self, api_client):
-        test_date = (datetime.now(timezone.utc).date() + timedelta(days=2)).isoformat()
+    def test_appointment_slots_have_availability(self, api_client):
+        slots = get_slots(api_client, future_date())
+        assert first_available_time(slots)
 
-        slots_before_resp = api_client.get(
-            f"{API_BASE}/appointments/slots", params={"date": test_date}, timeout=20
-        )
-        assert slots_before_resp.status_code == 200
-        slots_before = slots_before_resp.json()["slots"]
-        available_before = [slot["time"] for slot in slots_before if slot["available"]]
-        assert len(available_before) > 0
-        chosen_time = available_before[0]
+    def test_booking_marks_slot_unavailable(self, api_client):
+        test_date = future_date(days_ahead=3)
+        chosen_time = first_available_time(get_slots(api_client, test_date))
+        booking_payload, booking_data = create_booking(api_client, test_date, chosen_time)
 
-        booking_payload = {
-            "name": "TEST_Agent Booking",
-            "phone": "5550101000",
-            "email": "test.booking@example.com",
-            "service": "New client consultation",
-            "date": test_date,
-            "time": chosen_time,
-            "notes": "Created by automated API test",
-        }
-        booking_resp = api_client.post(
-            f"{API_BASE}/appointments", json=booking_payload, timeout=20
-        )
-        assert booking_resp.status_code == 200
-        booking_data = booking_resp.json()
         assert booking_data["name"] == booking_payload["name"]
         assert booking_data["date"] == test_date
         assert booking_data["time"] == chosen_time
         assert isinstance(booking_data["id"], str) and booking_data["id"].strip()
 
-        slots_after_resp = api_client.get(
-            f"{API_BASE}/appointments/slots", params={"date": test_date}, timeout=20
-        )
-        assert slots_after_resp.status_code == 200
-        slots_after = slots_after_resp.json()["slots"]
+        slots_after = get_slots(api_client, test_date)
         chosen_slot = next(slot for slot in slots_after if slot["time"] == chosen_time)
-        assert chosen_slot["available"] is False
+        assert not chosen_slot["available"]
 
-    def test_lead_capture_and_dashboard_updates(self, api_client):
-        before_dashboard_resp = api_client.get(f"{API_BASE}/dashboard", timeout=20)
-        assert before_dashboard_resp.status_code == 200
-        before_dashboard = before_dashboard_resp.json()
-        before_open_leads = before_dashboard["open_leads"]
-
-        lead_payload = {
-            "name": "TEST_Agent Lead",
-            "phone": "5550202000",
-            "email": "test.lead@example.com",
-            "interest": "Need callback for consultation",
-            "preferred_contact_time": "Tomorrow afternoon",
-            "source": "receptionist",
-        }
-        create_resp = api_client.post(f"{API_BASE}/leads", json=lead_payload, timeout=20)
-        assert create_resp.status_code == 200
-        created = create_resp.json()
+    def test_lead_capture_appears_in_list(self, api_client):
+        lead_payload, created = create_lead(api_client)
         assert created["name"] == lead_payload["name"]
         assert created["phone"] == lead_payload["phone"]
         assert created["interest"] == lead_payload["interest"]
@@ -131,12 +149,14 @@ class TestReceptionistApi:
 
         leads_resp = api_client.get(f"{API_BASE}/leads", timeout=20)
         assert leads_resp.status_code == 200
-        leads = leads_resp.json()
-        assert any(item["id"] == created["id"] for item in leads)
+        assert any(item["id"] == created["id"] for item in leads_resp.json())
 
-        after_dashboard_resp = api_client.get(f"{API_BASE}/dashboard", timeout=20)
-        assert after_dashboard_resp.status_code == 200
-        after_dashboard = after_dashboard_resp.json()
+    def test_lead_capture_updates_dashboard(self, api_client):
+        before_dashboard = get_dashboard(api_client)
+        before_open_leads = before_dashboard["open_leads"]
+        _, created = create_lead(api_client)
+        after_dashboard = get_dashboard(api_client)
+
         assert after_dashboard["open_leads"] >= before_open_leads
         assert any(item["id"] == created["id"] for item in after_dashboard["recent_leads"])
 
