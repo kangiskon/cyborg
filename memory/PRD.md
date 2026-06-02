@@ -107,3 +107,12 @@
 - Removed nested ternary expressions from profile field rendering.
 - Simplified complex regression tests with focused helper functions.
 - Verified with lint, 40-test backend regression suite, browser smoke test, and independent testing-agent validation.
+
+
+## Code Review Follow-up Fixes — 2026-06-02
+- Replaced backend identity-style staff check with safer falsy validation.
+- Removed production console warning from CRACO visual-edits fallback.
+- Added named HTTP status constants in frontend auth/session handling.
+- Made reviewed React callback dependencies explicit while keeping memory-only staff sessions.
+- Simplified notification/audit compliance tests and auth URL helper nesting.
+- Verified with lint, 52-test backend regression, browser smoke test, and independent iteration-6 testing.
