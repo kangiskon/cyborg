@@ -238,7 +238,8 @@ main {
 .booking-panel,
 .lead-panel,
 .inbox-panel,
-.profile-panel {
+.profile-panel,
+.staff-login-panel {
     border: 1px solid rgba(216, 208, 197, 0.85);
     background: rgba(243, 240, 235, 0.82);
     backdrop-filter: blur(12px);
@@ -308,7 +309,8 @@ main {
 .booking-panel,
 .lead-panel,
 .inbox-panel,
-.profile-panel {
+.profile-panel,
+.staff-login-panel {
     padding: clamp(18px, 2vw, 26px);
 }
 
@@ -522,6 +524,60 @@ main {
     gap: 12px;
 }
 
+.staff-login-panel {
+    max-width: 680px;
+}
+
+.staff-login-panel p {
+    margin: -6px 0 18px;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.staff-login-form {
+    display: grid;
+    gap: 10px;
+}
+
+.staff-login-form input {
+    border-color: rgba(216, 208, 197, 0.95) !important;
+    background: rgba(255, 255, 255, 0.76) !important;
+    color: var(--ink) !important;
+    box-shadow: none !important;
+}
+
+.staff-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 18px;
+    padding: 12px;
+    border: 1px solid rgba(216, 208, 197, 0.72);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.58);
+}
+
+.staff-badge strong,
+.staff-badge span {
+    display: block;
+}
+
+.staff-badge span {
+    color: var(--muted);
+    font-size: 13px;
+    text-transform: capitalize;
+}
+
+.staff-badge button {
+    border: 1px solid rgba(216, 208, 197, 0.95);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--forest);
+    padding: 8px 12px;
+    font-weight: 800;
+}
+
 .profile-stack {
     display: flex;
     flex-direction: column;
@@ -534,7 +590,8 @@ main {
     gap: 8px;
 }
 
-.profile-field button {
+.profile-field button,
+.profile-field strong {
     width: 100%;
     text-align: left;
     padding: 12px;
@@ -543,6 +600,10 @@ main {
     background: rgba(255, 255, 255, 0.55);
     color: var(--ink);
     font-weight: 700;
+}
+
+.profile-field strong {
+    display: block;
 }
 
 .service-pills {

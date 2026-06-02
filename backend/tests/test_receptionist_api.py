@@ -24,6 +24,9 @@ def _get_base_url() -> str:
 
 BASE_URL = _get_base_url()
 API_BASE = f"{BASE_URL}/api"
+ADMIN_ACCESS_CODE = "FK-ADMIN-7X9Q2"
+STAFF_ACCESS_CODE = "FK-STAFF-4M8P1"
+VIEWER_ACCESS_CODE = "FK-VIEW-6L3N5"
 
 
 def future_date(days_ahead: int = 2) -> str:
@@ -40,7 +43,9 @@ def assert_dashboard_shape(data):
 
 
 def get_dashboard(api_client):
-    response = api_client.get(f"{API_BASE}/dashboard", timeout=20)
+    response = api_client.get(
+        f"{API_BASE}/dashboard", headers=auth_header(api_client, VIEWER_ACCESS_CODE), timeout=20
+    )
     assert response.status_code == 200
     return response.json()
 
@@ -88,6 +93,19 @@ def create_lead(api_client):
     return payload, response.json()
 
 
+def staff_login(api_client, access_code):
+    response = api_client.post(
+        f"{API_BASE}/auth/staff-login", json={"access_code": access_code}, timeout=20
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def auth_header(api_client, access_code):
+    token = staff_login(api_client, access_code)["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.fixture
 def api_client():
     session = requests.Session()
@@ -122,6 +140,35 @@ class TestReceptionistApi:
         assert isinstance(data.get("message"), str) and data["message"].strip()
         assert data.get("mode") in ["live", "mocked"]
 
+    def test_dashboard_requires_staff_login(self, api_client):
+        response = api_client.get(f"{API_BASE}/dashboard", timeout=20)
+        assert response.status_code == 401
+
+    def test_staff_login_returns_role_token(self, api_client):
+        data = staff_login(api_client, ADMIN_ACCESS_CODE)
+        assert data["token"]
+        assert data["staff"]["email"] == "admin@frontkind.app"
+        assert data["staff"]["role"] == "admin"
+
+    def test_viewer_can_access_dashboard_not_leads(self, api_client):
+        headers = auth_header(api_client, VIEWER_ACCESS_CODE)
+        dashboard_response = api_client.get(f"{API_BASE}/dashboard", headers=headers, timeout=20)
+        leads_response = api_client.get(f"{API_BASE}/leads", headers=headers, timeout=20)
+        assert dashboard_response.status_code == 200
+        assert leads_response.status_code == 403
+
+    def test_staff_can_access_leads_not_profile_edit(self, api_client):
+        headers = auth_header(api_client, STAFF_ACCESS_CODE)
+        leads_response = api_client.get(f"{API_BASE}/leads", headers=headers, timeout=20)
+        patch_response = api_client.patch(
+            f"{API_BASE}/business-profile",
+            headers=headers,
+            json={"hours": "Monday to Friday, 9:00 AM – 6:00 PM"},
+            timeout=20,
+        )
+        assert leads_response.status_code == 200
+        assert patch_response.status_code == 403
+
     def test_appointment_slots_have_availability(self, api_client):
         slots = get_slots(api_client, future_date())
         assert first_available_time(slots)
@@ -147,7 +194,9 @@ class TestReceptionistApi:
         assert created["interest"] == lead_payload["interest"]
         assert created["status"] == "new"
 
-        leads_resp = api_client.get(f"{API_BASE}/leads", timeout=20)
+        leads_resp = api_client.get(
+            f"{API_BASE}/leads", headers=auth_header(api_client, STAFF_ACCESS_CODE), timeout=20
+        )
         assert leads_resp.status_code == 200
         assert any(item["id"] == created["id"] for item in leads_resp.json())
 
@@ -178,7 +227,10 @@ class TestReceptionistApi:
             "faq": original["faq"],
         }
         put_resp = api_client.put(
-            f"{API_BASE}/business-profile", json=update_payload, timeout=20
+            f"{API_BASE}/business-profile",
+            headers=auth_header(api_client, ADMIN_ACCESS_CODE),
+            json=update_payload,
+            timeout=20,
         )
         assert put_resp.status_code == 200
         put_data = put_resp.json()
@@ -201,6 +253,9 @@ class TestReceptionistApi:
             "faq": original["faq"],
         }
         restore_resp = api_client.put(
-            f"{API_BASE}/business-profile", json=restore_payload, timeout=20
+            f"{API_BASE}/business-profile",
+            headers=auth_header(api_client, ADMIN_ACCESS_CODE),
+            json=restore_payload,
+            timeout=20,
         )
         assert restore_resp.status_code == 200

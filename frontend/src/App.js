@@ -12,6 +12,7 @@ import {
   Clock3,
   Headphones,
   Inbox,
+  LockKeyhole,
   MessageCircle,
   PhoneCall,
   Send,
@@ -26,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+const STAFF_TOKEN_STORAGE_KEY = "frontkind_staff_token";
 
 const ICON_SIZE = {
   tiny: 15,
@@ -51,6 +53,7 @@ const CHAT_MESSAGE_MOTION = {
 const SCROLL_INTO_VIEW_OPTIONS = { behavior: "smooth" };
 const DEFAULT_SERVICES = ["New client consultation"];
 const EMPTY_LEAD = { name: "", phone: "", email: "", interest: "", preferred_contact_time: "" };
+const EMPTY_STAFF_LOGIN = { accessCode: "" };
 const TEST_ID_SANITIZER = /[^a-z0-9]+/g;
 
 const quickPrompts = [
@@ -76,6 +79,8 @@ const createChatMessage = (role, content, prefix) => ({
   role,
   content,
 });
+
+const authHeaders = (token) => ({ Authorization: `Bearer ${token}` });
 
 const buildStats = (dashboard) => [
   {
@@ -392,9 +397,81 @@ function LeadPanel({ refreshDashboard }) {
   );
 }
 
-function InboxPanel({ dashboard }) {
+function StaffLoginPanel({ onLogin }) {
+  const [form, setForm] = useState(EMPTY_STAFF_LOGIN);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitLogin = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const response = await axios.post(`${API}/auth/staff-login`, {
+        access_code: form.accessCode,
+      });
+      localStorage.setItem(STAFF_TOKEN_STORAGE_KEY, response.data.token);
+      onLogin({ token: response.data.token, staff: response.data.staff });
+      setForm(EMPTY_STAFF_LOGIN);
+      toast.success("Staff access granted.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Invalid staff access code.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="staff-login-panel" data-testid="staff-login-panel">
+      <div className="panel-heading compact">
+        <div>
+          <span data-testid="staff-login-kicker">Protected area</span>
+          <h2 data-testid="staff-login-title">Staff login</h2>
+        </div>
+        <LockKeyhole data-testid="staff-login-icon" size={ICON_SIZE.panel} />
+      </div>
+      <p data-testid="staff-login-description">
+        Enter a staff access code to view the receptionist inbox, appointments, and lead handoff details.
+      </p>
+      <form className="staff-login-form" data-testid="staff-login-form" onSubmit={submitLogin}>
+        <Label data-testid="staff-code-label" htmlFor="staff-access-code">Access code</Label>
+        <Input
+          data-testid="staff-code-input"
+          id="staff-access-code"
+          value={form.accessCode}
+          onChange={(event) => setForm({ accessCode: event.target.value })}
+          placeholder="Enter staff access code"
+          type="password"
+          required
+        />
+        <Button data-testid="staff-login-submit-button" className="primary-action" type="submit" disabled={submitting}>
+          <LockKeyhole size={ICON_SIZE.action} /> Unlock staff inbox
+        </Button>
+      </form>
+    </section>
+  );
+}
+
+function StaffBadge({ staffAuth, onLogout }) {
+  if (!staffAuth?.staff) return null;
+
+  return (
+    <div className="staff-badge" data-testid="staff-session-badge">
+      <div data-testid="staff-session-details">
+        <strong data-testid="staff-session-name">{staffAuth.staff.name}</strong>
+        <span data-testid="staff-session-role">{staffAuth.staff.role}</span>
+      </div>
+      <button data-testid="staff-logout-button" type="button" onClick={onLogout}>Log out</button>
+    </div>
+  );
+}
+
+function InboxPanel({ dashboard, staffAuth, onLogin, onLogout }) {
+  if (!staffAuth?.token) {
+    return <StaffLoginPanel onLogin={onLogin} />;
+  }
+
   return (
     <section className="inbox-panel" data-testid="operations-inbox-panel">
+      <StaffBadge staffAuth={staffAuth} onLogout={onLogout} />
       <div className="panel-heading compact">
         <div>
           <span data-testid="inbox-panel-kicker">Today’s handoff</span>
@@ -438,20 +515,23 @@ function InboxPanel({ dashboard }) {
   );
 }
 
-function ProfilePanel({ profile, setProfile }) {
+function ProfilePanel({ profile, setProfile, staffAuth }) {
   const [editing, setEditing] = useState(null);
+  const canEditProfile = staffAuth?.staff?.role === "admin";
 
   const saveProfileField = useCallback(async (field, value) => {
     const nextProfile = { ...profile, [field]: value };
     setProfile(nextProfile);
     setEditing(null);
     try {
-      await axios.patch(`${API}/business-profile`, { [field]: value });
+      await axios.patch(`${API}/business-profile`, { [field]: value }, {
+        headers: authHeaders(staffAuth.token),
+      });
       toast.success("Business profile updated.");
     } catch (error) {
       toast.error("Could not update profile.");
     }
-  }, [profile, setProfile]);
+  }, [profile, setProfile, staffAuth]);
 
   if (!profile) return null;
 
@@ -475,8 +555,10 @@ function ProfilePanel({ profile, setProfile }) {
               onBlur={(event) => saveProfileField("business_name", event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && saveProfileField("business_name", event.currentTarget.value)}
             />
-          ) : (
+          ) : canEditProfile ? (
             <button data-testid="profile-business-name-button" type="button" onClick={() => setEditing("business_name")}>{profile.business_name}</button>
+          ) : (
+            <strong data-testid="profile-business-name-readonly">{profile.business_name}</strong>
           )}
         </div>
         <div className="profile-field" data-testid="profile-hours-field">
@@ -489,8 +571,10 @@ function ProfilePanel({ profile, setProfile }) {
               onBlur={(event) => saveProfileField("hours", event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && saveProfileField("hours", event.currentTarget.value)}
             />
-          ) : (
+          ) : canEditProfile ? (
             <button data-testid="profile-hours-button" type="button" onClick={() => setEditing("hours")}>{profile.hours}</button>
+          ) : (
+            <strong data-testid="profile-hours-readonly">{profile.hours}</strong>
           )}
         </div>
         <div className="service-pills" data-testid="profile-service-pill-list">
@@ -516,23 +600,77 @@ const Home = () => {
   const [dashboard, setDashboard] = useState(null);
   const [messages, setMessages] = useState([initialMessage]);
   const [sessionId, setSessionId] = useState(null);
+  const [staffAuth, setStaffAuth] = useState(null);
 
-  const loadData = useCallback(async () => {
+  const loadPublicData = useCallback(async () => {
     try {
-      const [profileResponse, dashboardResponse] = await Promise.all([
-        axios.get(`${API}/business-profile`),
-        axios.get(`${API}/dashboard`),
-      ]);
+      const profileResponse = await axios.get(`${API}/business-profile`);
       setProfile(profileResponse.data);
-      setDashboard(dashboardResponse.data);
     } catch (error) {
       toast.error("Could not load receptionist workspace.");
     }
   }, []);
 
+  const loadProtectedData = useCallback(async (token) => {
+    if (!token) {
+      setDashboard(null);
+      return;
+    }
+    try {
+      const dashboardResponse = await axios.get(`${API}/dashboard`, {
+        headers: authHeaders(token),
+      });
+      setDashboard(dashboardResponse.data);
+    } catch (error) {
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
+        setStaffAuth(null);
+        setDashboard(null);
+        toast.error("Staff session expired. Please log in again.");
+      } else {
+        toast.error("Could not load staff inbox.");
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadPublicData();
+  }, [loadPublicData]);
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem(STAFF_TOKEN_STORAGE_KEY);
+    if (!savedToken) return;
+
+    const restoreStaffSession = async () => {
+      try {
+        const response = await axios.get(`${API}/auth/me`, {
+          headers: authHeaders(savedToken),
+        });
+        setStaffAuth({ token: savedToken, staff: response.data });
+        await loadProtectedData(savedToken);
+      } catch (error) {
+        localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
+      }
+    };
+
+    restoreStaffSession();
+  }, [loadProtectedData]);
+
+  const handleStaffLogin = useCallback((nextStaffAuth) => {
+    setStaffAuth(nextStaffAuth);
+    loadProtectedData(nextStaffAuth.token);
+  }, [loadProtectedData]);
+
+  const handleStaffLogout = useCallback(() => {
+    localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
+    setStaffAuth(null);
+    setDashboard(null);
+    toast.success("Staff logged out.");
+  }, []);
+
+  const refreshDashboard = useCallback(() => {
+    loadProtectedData(staffAuth?.token);
+  }, [loadProtectedData, staffAuth?.token]);
 
   const stats = useMemo(() => buildStats(dashboard), [dashboard]);
 
@@ -586,17 +724,17 @@ const Home = () => {
             <ChatPanel messages={messages} setMessages={setMessages} sessionId={sessionId} setSessionId={setSessionId} />
           </div>
           <aside className="workspace-side" data-testid="workspace-side-column">
-            <ProfilePanel profile={profile} setProfile={setProfile} />
+            <ProfilePanel profile={profile} setProfile={setProfile} staffAuth={staffAuth} />
           </aside>
         </section>
 
         <section id="booking" className="workflow-grid" data-testid="booking-and-lead-grid">
-          <BookingPanel profile={profile} refreshDashboard={loadData} />
-          <LeadPanel refreshDashboard={loadData} />
+          <BookingPanel profile={profile} refreshDashboard={refreshDashboard} />
+          <LeadPanel refreshDashboard={refreshDashboard} />
         </section>
 
         <section id="inbox" className="inbox-grid" data-testid="inbox-section">
-          <InboxPanel dashboard={dashboard} />
+          <InboxPanel dashboard={dashboard} staffAuth={staffAuth} onLogin={handleStaffLogin} onLogout={handleStaffLogout} />
         </section>
       </main>
     </div>

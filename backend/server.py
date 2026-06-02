@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import Depends, FastAPI, APIRouter, HTTPException, Header
 from dotenv import load_dotenv
 from starlette.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -9,7 +9,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Any, Dict, List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from jose import JWTError, jwt
 from emergentintegrations.llm.chat import LlmChat, StreamDone, TextDelta, UserMessage
 
 
@@ -56,6 +57,32 @@ DEFAULT_PROFILE = {
 }
 
 AVAILABLE_SLOTS = ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00"]
+JWT_ALGORITHM = "HS256"
+STAFF_TOKEN_EXPIRE_HOURS = 8
+ROLE_RANK = {"viewer": 1, "staff": 2, "admin": 3}
+
+
+def staff_directory() -> Dict[str, Dict[str, str]]:
+    return {
+        os.environ["STAFF_ADMIN_ACCESS_CODE"]: {
+            "id": "admin-frontkind",
+            "email": "admin@frontkind.app",
+            "name": "Frontkind Admin",
+            "role": "admin",
+        },
+        os.environ["STAFF_STAFF_ACCESS_CODE"]: {
+            "id": "staff-frontkind",
+            "email": "staff@frontkind.app",
+            "name": "Reception Staff",
+            "role": "staff",
+        },
+        os.environ["STAFF_VIEWER_ACCESS_CODE"]: {
+            "id": "viewer-frontkind",
+            "email": "viewer@frontkind.app",
+            "name": "Inbox Viewer",
+            "role": "viewer",
+        },
+    }
 
 
 def validate_iso_date(value: str) -> str:
@@ -216,10 +243,77 @@ class DashboardSummary(BaseModel):
     next_appointments: List[Appointment]
     recent_leads: List[Lead]
 
+
+class StaffLoginRequest(BaseModel):
+    access_code: str = Field(..., min_length=6)
+
+
+class StaffUser(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    role: str
+
+
+class StaffLoginResponse(BaseModel):
+    token: str
+    staff: StaffUser
+
 # Add your routes to the router instead of directly to app
 @api_router.get("/")
 async def root():
     return {"message": "AI receptionist API is ready"}
+
+
+def create_staff_token(staff: Dict[str, str]) -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=STAFF_TOKEN_EXPIRE_HOURS)
+    payload = {
+        "sub": staff["id"],
+        "email": staff["email"],
+        "name": staff["name"],
+        "role": staff["role"],
+        "exp": expires_at,
+    }
+    return jwt.encode(payload, os.environ["STAFF_AUTH_SECRET"], algorithm=JWT_ALGORITHM)
+
+
+async def get_current_staff(authorization: Optional[str] = Header(default=None)) -> StaffUser:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Staff login required.")
+    token = authorization.replace("Bearer ", "", 1).strip()
+    try:
+        payload = jwt.decode(token, os.environ["STAFF_AUTH_SECRET"], algorithms=[JWT_ALGORITHM])
+        staff = StaffUser(
+            id=payload["sub"],
+            email=payload["email"],
+            name=payload["name"],
+            role=payload["role"],
+        )
+    except (JWTError, KeyError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired staff login.") from exc
+    return staff
+
+
+def require_role(min_role: str):
+    async def checker(staff: StaffUser = Depends(get_current_staff)) -> StaffUser:
+        if ROLE_RANK.get(staff.role, 0) < ROLE_RANK[min_role]:
+            raise HTTPException(status_code=403, detail="Your staff role cannot access this area.")
+        return staff
+
+    return checker
+
+
+@api_router.post("/auth/staff-login", response_model=StaffLoginResponse)
+async def staff_login(input_data: StaffLoginRequest):
+    staff = staff_directory().get(input_data.access_code.strip())
+    if not staff:
+        raise HTTPException(status_code=401, detail="Invalid staff access code.")
+    return StaffLoginResponse(token=create_staff_token(staff), staff=StaffUser(**staff))
+
+
+@api_router.get("/auth/me", response_model=StaffUser)
+async def staff_me(staff: StaffUser = Depends(get_current_staff)):
+    return staff
 
 
 async def get_profile_doc() -> Dict[str, Any]:
@@ -312,7 +406,8 @@ async def get_business_profile():
 
 
 @api_router.put("/business-profile", response_model=BusinessProfile)
-async def update_business_profile(input_data: BusinessProfileUpdate):
+async def update_business_profile(input_data: BusinessProfileUpdate, staff: StaffUser = Depends(require_role("admin"))):
+    _ = staff
     profile = BusinessProfile(**input_data.model_dump(), updated_at=utc_now_iso())
     await db.business_profiles.update_one(
         {"id": profile.id},
@@ -323,7 +418,8 @@ async def update_business_profile(input_data: BusinessProfileUpdate):
 
 
 @api_router.patch("/business-profile", response_model=BusinessProfile)
-async def patch_business_profile(input_data: BusinessProfilePartialUpdate):
+async def patch_business_profile(input_data: BusinessProfilePartialUpdate, staff: StaffUser = Depends(require_role("admin"))):
+    _ = staff
     current = await get_profile_doc()
     updates = input_data.model_dump(exclude_unset=True)
     if not updates:
@@ -339,7 +435,8 @@ async def patch_business_profile(input_data: BusinessProfilePartialUpdate):
 
 
 @api_router.get("/dashboard", response_model=DashboardSummary)
-async def get_dashboard():
+async def get_dashboard(staff: StaffUser = Depends(require_role("viewer"))):
+    _ = staff
     today = datetime.now(timezone.utc).date().isoformat()
     appointments_today = await db.appointments.count_documents({"date": today})
     open_leads = await db.leads.count_documents({"status": "new"})
@@ -377,7 +474,8 @@ async def create_appointment(input_data: AppointmentCreate):
 
 
 @api_router.get("/appointments", response_model=List[Appointment])
-async def list_appointments():
+async def list_appointments(staff: StaffUser = Depends(require_role("viewer"))):
+    _ = staff
     appointments = await db.appointments.find({}, {"_id": 0}).sort([("date", 1), ("time", 1)]).to_list(200)
     return [Appointment(**item) for item in appointments]
 
@@ -390,19 +488,22 @@ async def create_lead(input_data: LeadCreate):
 
 
 @api_router.get("/leads", response_model=List[Lead])
-async def list_leads():
+async def list_leads(staff: StaffUser = Depends(require_role("staff"))):
+    _ = staff
     leads = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return [Lead(**item) for item in leads]
 
 
 @api_router.get("/chat/sessions", response_model=List[ChatSession])
-async def list_chat_sessions():
+async def list_chat_sessions(staff: StaffUser = Depends(require_role("viewer"))):
+    _ = staff
     sessions = await db.chat_sessions.find({}, {"_id": 0}).sort("updated_at", -1).to_list(100)
     return [ChatSession(**item) for item in sessions]
 
 
 @api_router.get("/chat/messages/{session_id}", response_model=List[ChatMessage])
-async def get_chat_messages(session_id: str):
+async def get_chat_messages(session_id: str, staff: StaffUser = Depends(require_role("viewer"))):
+    _ = staff
     messages = await db.chat_messages.find({"session_id": session_id}, {"_id": 0}).sort("created_at", 1).to_list(300)
     return [ChatMessage(**item) for item in messages]
 
