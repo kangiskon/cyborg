@@ -6,21 +6,20 @@ import pytest
 import requests
 
 
-def _get_base_url() -> str:
-    from_env = os.environ.get("REACT_APP_BACKEND_URL")
-    if from_env:
-        return from_env.rstrip("/")
-
+def _read_backend_url_from_file() -> str | None:
     env_path = "/app/frontend/.env"
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as env_file:
-            for line in env_file:
-                if line.startswith("REACT_APP_BACKEND_URL="):
-                    value = line.split("=", 1)[1].strip().rstrip("/")
-                    if value:
-                        return value
+    if not os.path.exists(env_path):
+        return None
+    with open(env_path, "r", encoding="utf-8") as env_file:
+        matches = [line.split("=", 1)[1].strip().rstrip("/") for line in env_file if line.startswith("REACT_APP_BACKEND_URL=")]
+    return matches[0] if matches else None
 
-    pytest.skip("REACT_APP_BACKEND_URL is not configured")
+
+def _get_base_url() -> str:
+    base_url = os.environ.get("REACT_APP_BACKEND_URL") or _read_backend_url_from_file()
+    if not base_url:
+        pytest.skip("REACT_APP_BACKEND_URL is not configured")
+    return base_url.rstrip("/")
 
 
 BASE_URL = _get_base_url()

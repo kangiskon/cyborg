@@ -393,7 +393,7 @@ async def get_current_staff(authorization: Optional[str] = Header(default=None))
         )
     except (JWTError, KeyError) as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired staff login.") from exc
-    if staff is None:
+    if not staff:
         raise HTTPException(status_code=401, detail="Invalid staff login.")
     return staff
 

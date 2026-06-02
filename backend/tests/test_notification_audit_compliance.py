@@ -6,18 +6,20 @@ import pytest
 import requests
 
 
-def _get_base_url() -> str:
-    from_env = os.environ.get("REACT_APP_BACKEND_URL")
-    if from_env:
-        return from_env.rstrip("/")
-
+def _read_backend_url_from_file() -> str | None:
     env_path = "/app/frontend/.env"
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as env_file:
-            for line in env_file:
-                if line.startswith("REACT_APP_BACKEND_URL="):
-                    return line.split("=", 1)[1].strip().rstrip("/")
-    pytest.skip("REACT_APP_BACKEND_URL not configured")
+    if not os.path.exists(env_path):
+        return None
+    with open(env_path, "r", encoding="utf-8") as env_file:
+        values = [line.split("=", 1)[1].strip().rstrip("/") for line in env_file if line.startswith("REACT_APP_BACKEND_URL=")]
+    return values[0] if values else None
+
+
+def _get_base_url() -> str:
+    base_url = os.environ.get("REACT_APP_BACKEND_URL") or _read_backend_url_from_file()
+    if not base_url:
+        pytest.skip("REACT_APP_BACKEND_URL not configured")
+    return base_url.rstrip("/")
 
 
 API_BASE = f"{_get_base_url()}/api"
@@ -68,34 +70,41 @@ def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def get_notifications(api_client, headers, notification_type="all", status="all"):
+    response = api_client.get(
+        f"{API_BASE}/notifications",
+        headers=headers,
+        params={"notification_type": notification_type, "status": status},
+        timeout=20,
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def first_unread_notification(payload, staff_id):
+    return next(
+        (item for item in payload["notifications"] if staff_id not in item.get("read_by", [])),
+        None,
+    )
+
+
 class TestNotificationCompliance:
     """Notification filter behavior and unread/read state validations."""
 
-    def test_notification_filters_type_and_status(self, api_client):
+    def test_notification_filter_by_type(self, api_client):
         _require_access_codes()
         staff = login(api_client, STAFF_ACCESS_CODE)
         headers = auth_headers(staff["token"])
-
-        filtered = api_client.get(
-            f"{API_BASE}/notifications",
-            headers=headers,
-            params={"notification_type": "lead", "status": "all"},
-            timeout=20,
-        )
-        assert filtered.status_code == 200
-        payload = filtered.json()
-        assert "notifications" in payload and isinstance(payload["notifications"], list)
-        assert "unread_count" in payload and isinstance(payload["unread_count"], int)
+        payload = get_notifications(api_client, headers, notification_type="lead")
+        assert isinstance(payload["notifications"], list)
+        assert isinstance(payload["unread_count"], int)
         assert all(item.get("type") == "lead" for item in payload["notifications"])
 
-        unread_only = api_client.get(
-            f"{API_BASE}/notifications",
-            headers=headers,
-            params={"notification_type": "all", "status": "unread"},
-            timeout=20,
-        )
-        assert unread_only.status_code == 200
-        unread_payload = unread_only.json()
+    def test_notification_filter_by_unread_status(self, api_client):
+        _require_access_codes()
+        staff = login(api_client, STAFF_ACCESS_CODE)
+        headers = auth_headers(staff["token"])
+        unread_payload = get_notifications(api_client, headers, status="unread")
         staff_id = staff["staff"]["id"]
         assert all(staff_id not in item.get("read_by", []) for item in unread_payload["notifications"])
 
@@ -133,20 +142,9 @@ class TestNotificationCompliance:
         headers = auth_headers(staff["token"])
         staff_id = staff["staff"]["id"]
 
-        current = api_client.get(
-            f"{API_BASE}/notifications",
-            headers=headers,
-            params={"notification_type": "all", "status": "all"},
-            timeout=20,
-        )
-        assert current.status_code == 200
-        before = current.json()
+        before = get_notifications(api_client, headers)
         assert isinstance(before["unread_count"], int)
-
-        target = next(
-            (item for item in before["notifications"] if staff_id not in item.get("read_by", [])),
-            None,
-        )
+        target = first_unread_notification(before, staff_id)
         if not target:
             pytest.skip("No unread notification available for current staff")
 
@@ -158,14 +156,7 @@ class TestNotificationCompliance:
         assert mark.status_code == 200
         assert mark.json().get("status") == "ok"
 
-        refreshed = api_client.get(
-            f"{API_BASE}/notifications",
-            headers=headers,
-            params={"notification_type": "all", "status": "all"},
-            timeout=20,
-        )
-        assert refreshed.status_code == 200
-        after = refreshed.json()
+        after = get_notifications(api_client, headers)
         assert after["unread_count"] <= before["unread_count"]
         updated = next(item for item in after["notifications"] if item["id"] == target["id"])
         assert staff_id in updated.get("read_by", [])

@@ -30,6 +30,10 @@ import { Textarea } from "@/components/ui/textarea";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+const HTTP_STATUS = {
+  unauthorized: 401,
+  forbidden: 403,
+};
 
 const ICON_SIZE = {
   tiny: 15,
@@ -298,7 +302,7 @@ function BookingPanel({ profile, refreshDashboard }) {
     } catch (error) {
       toast.error("Could not load appointment slots.");
     }
-  }, []);
+  }, [setForm, setSlots]);
 
   useEffect(() => {
     loadSlots(form.date);
@@ -715,7 +719,7 @@ function ProfilePanel({ profile, setProfile, staffAuth }) {
     } catch (error) {
       toast.error("Could not update profile.");
     }
-  }, [profile, setProfile, staffAuth]);
+  }, [profile, setProfile, staffAuth?.token]);
 
   if (!profile) return null;
 
@@ -808,14 +812,14 @@ const Home = () => {
         setAuditLogs([]);
       }
     } catch (error) {
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      if (error.response?.status === HTTP_STATUS.unauthorized || error.response?.status === HTTP_STATUS.forbidden) {
         clearStaffState({ setStaffAuth, setDashboard, setNotifications, setUnreadCount, setAuditLogs });
         toast.error("Staff session expired. Please log in again.");
       } else {
         toast.error("Could not load staff inbox.");
       }
     }
-  }, []);
+  }, [setAuditLogs, setDashboard, setNotifications, setStaffAuth, setUnreadCount]);
 
   useEffect(() => {
     loadPublicData();
@@ -835,7 +839,7 @@ const Home = () => {
     setNotificationFilters(DEFAULT_NOTIFICATION_FILTERS);
     setAuditFilters(DEFAULT_AUDIT_FILTERS);
     toast.success("Staff logged out.");
-  }, [staffAuth?.token]);
+  }, [setAuditFilters, setAuditLogs, setDashboard, setNotificationFilters, setNotifications, setStaffAuth, setUnreadCount, staffAuth?.token]);
 
   const refreshDashboard = useCallback(() => {
     loadProtectedData(staffAuth?.token, { notificationFilters, auditFilters });
@@ -867,7 +871,7 @@ const Home = () => {
     } catch (error) {
       toast.error("Could not export audit logs.");
     }
-  }, [auditFilters.action, auditFilters.actorRole, refreshDashboard, staffAuth?.token]);
+  }, [auditFilters, refreshDashboard, staffAuth?.token]);
 
   useEffect(() => {
     if (staffAuth?.token) {
