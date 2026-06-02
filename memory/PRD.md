@@ -97,3 +97,13 @@
 - Added frontend export button that downloads filtered audit logs as CSV.
 - Verified role restrictions: Staff/Viewer cannot access audit export.
 - Verified with backend regression, browser smoke test, and testing-agent compliance validation.
+
+
+## Code Review Security & Quality Fixes — 2026-06-02
+- Fixed backend staff auth undefined-variable risk by explicitly initializing and validating staff before return.
+- Removed localStorage token persistence; staff session token is now kept in memory only.
+- Updated toast subscription hook to use React useSyncExternalStore instead of manual effect listener state.
+- Refactored protected data loading helpers and CSV download helper to reduce stale-closure risk.
+- Removed nested ternary expressions from profile field rendering.
+- Simplified complex regression tests with focused helper functions.
+- Verified with lint, 40-test backend regression suite, browser smoke test, and independent testing-agent validation.
