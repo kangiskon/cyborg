@@ -45,10 +45,9 @@
 
 ## Prioritized Backlog
 ### P0
-- Add staff authentication before exposing admin inbox data outside internal use.
+- Move access-code values into a managed secret rotation process for production use.
 
 ### P1
-- Add staff authentication and private admin-only inbox access.
 - Add structured conversation-to-lead extraction from chat.
 - Add appointment rescheduling/cancellation workflows.
 
@@ -58,9 +57,9 @@
 - Add analytics for conversion, missed questions, and popular services.
 
 ## Next Tasks
-1. Add staff login before exposing inbox data beyond demo use.
-2. Add notification handoff for appointments and callback requests.
-3. Add automatic chat-to-lead extraction.
+1. Add notification handoff for appointments and callback requests.
+2. Add automatic chat-to-lead extraction.
+3. Add audit log for staff access and profile edits.
 
 
 ## Code Quality Fixes — 2026-06-02
@@ -69,3 +68,12 @@
 - Wrapped production console warning behind a development-only guard.
 - Simplified backend regression tests with helper functions and removed problematic literal comparison style.
 - Verified with JavaScript lint, Python lint, backend regression tests, and frontend smoke test.
+
+
+## Staff Login & Role Protection — 2026-06-02
+- Added simple staff access-code login with JWT session tokens.
+- Added Admin, Staff, and Viewer roles.
+- Protected receptionist dashboard, inbox, appointments list, lead list, chat session/message admin views, and profile editing endpoints.
+- Admin can edit business profile; Staff can access leads; Viewer can access dashboard/inbox summaries.
+- Frontend now shows a staff login panel for protected inbox access and supports logout/session restoration.
+- Verified with backend regression tests, browser smoke test, and testing-agent role protection checks.
