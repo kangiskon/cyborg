@@ -11,6 +11,7 @@ import {
   Check,
   Clock3,
   ClipboardList,
+  Download,
   Headphones,
   Inbox,
   LockKeyhole,
@@ -56,6 +57,12 @@ const SCROLL_INTO_VIEW_OPTIONS = { behavior: "smooth" };
 const DEFAULT_SERVICES = ["New client consultation"];
 const EMPTY_LEAD = { name: "", phone: "", email: "", interest: "", preferred_contact_time: "" };
 const EMPTY_STAFF_LOGIN = { accessCode: "" };
+const DEFAULT_NOTIFICATION_FILTERS = { type: "all", status: "all" };
+const DEFAULT_AUDIT_FILTERS = { action: "all", actorRole: "all" };
+const NOTIFICATION_TYPES = ["all", "appointment", "lead", "lead_suggestion"];
+const NOTIFICATION_STATUSES = ["all", "unread", "read"];
+const AUDIT_ACTIONS = ["all", "login", "logout", "view", "profile_update", "notification_read", "lead_approved", "export"];
+const AUDIT_ROLES = ["all", "admin", "staff", "viewer", "system"];
 const TEST_ID_SANITIZER = /[^a-z0-9]+/g;
 
 const quickPrompts = [
@@ -466,12 +473,28 @@ function StaffBadge({ staffAuth, onLogout }) {
   );
 }
 
-function NotificationCenter({ notifications, unreadCount, onMarkRead, staffId }) {
+function NotificationCenter({ notifications, unreadCount, onMarkRead, staffId, filters, onFiltersChange }) {
   return (
     <div className="notification-center" data-testid="notification-center-panel">
       <div className="mini-heading" data-testid="notification-center-heading">
         <span><Bell size={ICON_SIZE.action} /> Notifications</span>
         <strong data-testid="notification-unread-count">{unreadCount}</strong>
+      </div>
+      <div className="filter-row" data-testid="notification-filter-row">
+        <select
+          data-testid="notification-type-filter"
+          value={filters.type}
+          onChange={(event) => onFiltersChange({ ...filters, type: event.target.value })}
+        >
+          {NOTIFICATION_TYPES.map((type) => <option data-testid={`notification-type-option-${type}`} key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
+        </select>
+        <select
+          data-testid="notification-status-filter"
+          value={filters.status}
+          onChange={(event) => onFiltersChange({ ...filters, status: event.target.value })}
+        >
+          {NOTIFICATION_STATUSES.map((status) => <option data-testid={`notification-status-option-${status}`} key={status} value={status}>{status}</option>)}
+        </select>
       </div>
       {(notifications || []).length === 0 ? (
         <p data-testid="notifications-empty-state">No alerts yet.</p>
@@ -493,11 +516,30 @@ function NotificationCenter({ notifications, unreadCount, onMarkRead, staffId })
   );
 }
 
-function AuditLogPanel({ logs }) {
+function AuditLogPanel({ logs, filters, onFiltersChange, onExport }) {
   return (
     <div className="audit-panel" data-testid="audit-log-panel">
       <div className="mini-heading" data-testid="audit-log-heading">
         <span><ClipboardList size={ICON_SIZE.action} /> Staff activity</span>
+        <button className="export-button" data-testid="audit-export-button" type="button" onClick={onExport}>
+          <Download size={ICON_SIZE.tiny} /> Export CSV
+        </button>
+      </div>
+      <div className="filter-row" data-testid="audit-filter-row">
+        <select
+          data-testid="audit-action-filter"
+          value={filters.action}
+          onChange={(event) => onFiltersChange({ ...filters, action: event.target.value })}
+        >
+          {AUDIT_ACTIONS.map((action) => <option data-testid={`audit-action-option-${action}`} key={action} value={action}>{action.replaceAll("_", " ")}</option>)}
+        </select>
+        <select
+          data-testid="audit-role-filter"
+          value={filters.actorRole}
+          onChange={(event) => onFiltersChange({ ...filters, actorRole: event.target.value })}
+        >
+          {AUDIT_ROLES.map((role) => <option data-testid={`audit-role-option-${role}`} key={role} value={role}>{role}</option>)}
+        </select>
       </div>
       {(logs || []).length === 0 ? (
         <p data-testid="audit-empty-state">No staff activity yet.</p>
@@ -536,7 +578,7 @@ function SuggestedLeadActions({ lead, staffAuth, refreshDashboard }) {
   );
 }
 
-function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, unreadCount, auditLogs, onMarkRead, refreshDashboard }) {
+function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, unreadCount, auditLogs, onMarkRead, refreshDashboard, notificationFilters, onNotificationFiltersChange, auditFilters, onAuditFiltersChange, onAuditExport }) {
   if (!staffAuth?.token) {
     return <StaffLoginPanel onLogin={onLogin} />;
   }
@@ -551,7 +593,14 @@ function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, un
         </div>
         <Headphones data-testid="inbox-panel-icon" size={ICON_SIZE.panel} />
       </div>
-      <NotificationCenter notifications={notifications} unreadCount={unreadCount} onMarkRead={onMarkRead} staffId={staffAuth.staff.id} />
+      <NotificationCenter
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkRead={onMarkRead}
+        staffId={staffAuth.staff.id}
+        filters={notificationFilters}
+        onFiltersChange={onNotificationFiltersChange}
+      />
       <div className="handoff-list" data-testid="appointments-handoff-list">
         <h3 data-testid="appointments-handoff-title">Upcoming appointments</h3>
         {(dashboard?.next_appointments || []).length === 0 ? (
@@ -588,7 +637,14 @@ function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notifications, un
           ))
         )}
       </div>
-      {staffAuth.staff.role === "admin" && <AuditLogPanel logs={auditLogs} />}
+      {staffAuth.staff.role === "admin" && (
+        <AuditLogPanel
+          logs={auditLogs}
+          filters={auditFilters}
+          onFiltersChange={onAuditFiltersChange}
+          onExport={onAuditExport}
+        />
+      )}
     </section>
   );
 }
@@ -682,6 +738,8 @@ const Home = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [notificationFilters, setNotificationFilters] = useState(DEFAULT_NOTIFICATION_FILTERS);
+  const [auditFilters, setAuditFilters] = useState(DEFAULT_AUDIT_FILTERS);
 
   const loadPublicData = useCallback(async () => {
     try {
@@ -703,6 +761,10 @@ const Home = () => {
       });
       const notificationResponse = await axios.get(`${API}/notifications`, {
         headers: authHeaders(token),
+        params: {
+          notification_type: notificationFilters.type,
+          status: notificationFilters.status,
+        },
       });
       setDashboard(dashboardResponse.data);
       setNotifications(notificationResponse.data.notifications);
@@ -714,6 +776,10 @@ const Home = () => {
       if (meResponse.data.role === "admin") {
         const auditResponse = await axios.get(`${API}/audit-logs`, {
           headers: authHeaders(token),
+          params: {
+            action: auditFilters.action,
+            actor_role: auditFilters.actorRole,
+          },
         });
         setAuditLogs(auditResponse.data.logs);
       } else {
@@ -732,7 +798,7 @@ const Home = () => {
         toast.error("Could not load staff inbox.");
       }
     }
-  }, []);
+  }, [auditFilters.action, auditFilters.actorRole, notificationFilters.status, notificationFilters.type]);
 
   useEffect(() => {
     loadPublicData();
@@ -773,6 +839,8 @@ const Home = () => {
     setNotifications([]);
     setUnreadCount(0);
     setAuditLogs([]);
+    setNotificationFilters(DEFAULT_NOTIFICATION_FILTERS);
+    setAuditFilters(DEFAULT_AUDIT_FILTERS);
     toast.success("Staff logged out.");
   }, [staffAuth?.token]);
 
@@ -791,6 +859,38 @@ const Home = () => {
       toast.error("Could not mark notification as read.");
     }
   }, [refreshDashboard, staffAuth?.token]);
+
+  const exportAuditLogs = useCallback(async () => {
+    if (!staffAuth?.token) return;
+    try {
+      const response = await axios.get(`${API}/audit-logs/export`, {
+        headers: authHeaders(staffAuth.token),
+        params: {
+          action: auditFilters.action,
+          actor_role: auditFilters.actorRole,
+        },
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: "text/csv" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "frontkind-audit-export.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Audit CSV exported.");
+      refreshDashboard();
+    } catch (error) {
+      toast.error("Could not export audit logs.");
+    }
+  }, [auditFilters.action, auditFilters.actorRole, refreshDashboard, staffAuth?.token]);
+
+  useEffect(() => {
+    if (staffAuth?.token) {
+      loadProtectedData(staffAuth.token);
+    }
+  }, [auditFilters, loadProtectedData, notificationFilters, staffAuth?.token]);
 
   const stats = useMemo(() => buildStats(dashboard), [dashboard]);
 
@@ -864,6 +964,11 @@ const Home = () => {
             auditLogs={auditLogs}
             onMarkRead={markNotificationRead}
             refreshDashboard={refreshDashboard}
+            notificationFilters={notificationFilters}
+            onNotificationFiltersChange={setNotificationFilters}
+            auditFilters={auditFilters}
+            onAuditFiltersChange={setAuditFilters}
+            onAuditExport={exportAuditLogs}
           />
         </section>
       </main>

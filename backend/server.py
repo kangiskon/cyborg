@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, APIRouter, HTTPException, Header
+from fastapi import Depends, FastAPI, APIRouter, HTTPException, Header, Query
 from dotenv import load_dotenv
 from starlette.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -6,6 +6,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import re
+import csv
+import io
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Any, Dict, List, Optional
@@ -304,6 +306,16 @@ class AuditLog(BaseModel):
 
 class AuditLogList(BaseModel):
     logs: List[AuditLog]
+
+
+class AuditExportRow(BaseModel):
+    created_at: str
+    actor_name: str
+    actor_role: str
+    action: str
+    resource: str
+    resource_id: Optional[str] = None
+    detail: Optional[str] = None
 
 
 class LeadApproveResponse(BaseModel):
@@ -683,11 +695,26 @@ async def approve_suggested_lead(lead_id: str, staff: StaffUser = Depends(requir
 
 
 @api_router.get("/notifications", response_model=NotificationList)
-async def list_notifications(staff: StaffUser = Depends(require_role("viewer"))):
+async def list_notifications(
+    staff: StaffUser = Depends(require_role("viewer")),
+    notification_type: str = Query(default="all"),
+    status: str = Query(default="all"),
+):
+    if status not in ["all", "read", "unread"]:
+        raise HTTPException(status_code=422, detail="Notification status filter must be all, read, or unread.")
     query = {"target_roles": {"$in": [staff.role]}}
+    if notification_type != "all":
+        query["type"] = notification_type
+    if status == "read":
+        query["read_by"] = staff.id
+    elif status == "unread":
+        query["read_by"] = {"$ne": staff.id}
     notifications_raw = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
     notifications = [Notification(**item) for item in notifications_raw]
-    unread_count = sum(1 for item in notifications if staff.id not in item.read_by)
+    unread_query = {"target_roles": {"$in": [staff.role]}, "read_by": {"$ne": staff.id}}
+    if notification_type != "all":
+        unread_query["type"] = notification_type
+    unread_count = await db.notifications.count_documents(unread_query)
     await write_audit_log(staff, "view", "notifications", detail="Viewed notification center")
     return NotificationList(notifications=notifications, unread_count=unread_count)
 
@@ -703,10 +730,50 @@ async def mark_notification_read(notification_id: str, staff: StaffUser = Depend
 
 
 @api_router.get("/audit-logs", response_model=AuditLogList)
-async def list_audit_logs(staff: StaffUser = Depends(require_role("admin"))):
-    logs_raw = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(100).to_list(100)
+async def list_audit_logs(
+    staff: StaffUser = Depends(require_role("admin")),
+    action: str = Query(default="all"),
+    actor_role: str = Query(default="all"),
+):
+    query: Dict[str, Any] = {}
+    if action != "all":
+        query["action"] = action
+    if actor_role != "all":
+        query["actor_role"] = actor_role
+    logs_raw = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).limit(100).to_list(100)
     await write_audit_log(staff, "view", "audit_logs", detail="Viewed staff audit logs")
     return AuditLogList(logs=[AuditLog(**item) for item in logs_raw])
+
+
+@api_router.get("/audit-logs/export")
+async def export_audit_logs(
+    staff: StaffUser = Depends(require_role("admin")),
+    action: str = Query(default="all"),
+    actor_role: str = Query(default="all"),
+):
+    query: Dict[str, Any] = {}
+    if action != "all":
+        query["action"] = action
+    if actor_role != "all":
+        query["actor_role"] = actor_role
+    logs = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).limit(1000).to_list(1000)
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["created_at", "actor_name", "actor_role", "action", "resource", "resource_id", "detail"],
+    )
+    writer.writeheader()
+    for log in logs:
+        row = AuditExportRow(**log).model_dump()
+        writer.writerow(row)
+    await write_audit_log(staff, "export", "audit_logs", detail="Exported compliance audit CSV")
+    output.seek(0)
+    filename = f"frontkind-audit-{datetime.now(timezone.utc).date().isoformat()}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @api_router.get("/chat/sessions", response_model=List[ChatSession])

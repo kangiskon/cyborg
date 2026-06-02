@@ -125,6 +125,27 @@ class TestNotificationsExtractionAudit:
         )
         assert mark.status_code == 200
 
+    def test_notification_filters_by_type_and_status(self, api_client):
+        headers = login_headers(api_client, STAFF_ACCESS_CODE)
+        response = api_client.get(
+            f"{API_BASE}/notifications",
+            headers=headers,
+            params={"notification_type": "lead", "status": "all"},
+            timeout=20,
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert all(item["type"] == "lead" for item in payload["notifications"])
+
+        unread = api_client.get(
+            f"{API_BASE}/notifications",
+            headers=headers,
+            params={"notification_type": "all", "status": "unread"},
+            timeout=20,
+        )
+        assert unread.status_code == 200
+        assert isinstance(unread.json()["unread_count"], int)
+
     def test_admin_can_view_audit_logs(self, api_client):
         headers = login_headers(api_client, ADMIN_ACCESS_CODE)
         response = api_client.get(f"{API_BASE}/audit-logs", headers=headers, timeout=20)
@@ -132,6 +153,28 @@ class TestNotificationsExtractionAudit:
         logs = response.json()["logs"]
         assert isinstance(logs, list)
         assert any(log["action"] in ["login", "view", "lead_approved"] for log in logs)
+
+    def test_admin_can_filter_and_export_audit_logs_csv(self, api_client):
+        headers = login_headers(api_client, ADMIN_ACCESS_CODE)
+        filtered = api_client.get(
+            f"{API_BASE}/audit-logs",
+            headers=headers,
+            params={"action": "login", "actor_role": "admin"},
+            timeout=20,
+        )
+        assert filtered.status_code == 200
+        assert all(log["action"] == "login" for log in filtered.json()["logs"])
+        assert all(log["actor_role"] == "admin" for log in filtered.json()["logs"])
+
+        exported = api_client.get(
+            f"{API_BASE}/audit-logs/export",
+            headers=headers,
+            params={"action": "login", "actor_role": "admin"},
+            timeout=20,
+        )
+        assert exported.status_code == 200
+        assert "text/csv" in exported.headers.get("content-type", "")
+        assert "created_at,actor_name,actor_role,action,resource" in exported.text
 
     def test_notification_mark_read_reduces_unread_count(self, api_client):
         headers = login_headers(api_client, STAFF_ACCESS_CODE)
