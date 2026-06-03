@@ -91,7 +91,7 @@ class TestAuthSessionRegression:
         response = api_client.get(f"{API_BASE}{endpoint}", timeout=20)
         assert response.status_code == 401
 
-    def test_logout_then_protected_call_with_same_token_is_still_well_formed(self, api_client):
+    def test_logout_revokes_token_immediately(self, api_client):
         payload = login(api_client, STAFF_ACCESS_CODE)
         token = payload["token"]
         logout = api_client.post(
@@ -100,7 +100,39 @@ class TestAuthSessionRegression:
         assert logout.status_code == 200
         assert logout.json().get("status") == "ok"
 
-        # No token revocation by design; endpoint should still respond normally (no server/runtime crash)
         me = api_client.get(f"{API_BASE}/auth/me", headers=auth_headers(token), timeout=20)
-        assert me.status_code in [200, 401]
-        assert isinstance(me.json(), dict)
+        assert me.status_code == 401
+        assert "revoked" in me.json().get("detail", "").lower()
+
+    def test_revoked_token_cannot_access_protected_route(self, api_client):
+        payload = login(api_client, VIEWER_ACCESS_CODE)
+        token = payload["token"]
+        logout = api_client.post(
+            f"{API_BASE}/auth/logout", headers=auth_headers(token), timeout=20
+        )
+        assert logout.status_code == 200
+
+        dashboard = api_client.get(f"{API_BASE}/dashboard", headers=auth_headers(token), timeout=20)
+        assert dashboard.status_code == 401
+
+    def test_relogin_after_logout_returns_new_working_token(self, api_client):
+        first_login = login(api_client, STAFF_ACCESS_CODE)
+        first_token = first_login["token"]
+
+        logout = api_client.post(
+            f"{API_BASE}/auth/logout", headers=auth_headers(first_token), timeout=20
+        )
+        assert logout.status_code == 200
+
+        second_login = login(api_client, STAFF_ACCESS_CODE)
+        second_token = second_login["token"]
+        assert second_token != first_token
+
+        old_me = api_client.get(f"{API_BASE}/auth/me", headers=auth_headers(first_token), timeout=20)
+        assert old_me.status_code == 401
+
+        new_me = api_client.get(f"{API_BASE}/auth/me", headers=auth_headers(second_token), timeout=20)
+        assert new_me.status_code == 200
+        new_me_data = new_me.json()
+        assert new_me_data["id"] == second_login["staff"]["id"]
+        assert new_me_data["role"] == "staff"

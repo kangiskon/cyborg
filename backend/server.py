@@ -265,6 +265,8 @@ class StaffUser(BaseModel):
     email: EmailStr
     name: str
     role: str
+    token_jti: Optional[str] = Field(default=None, exclude=True)
+    token_exp: Optional[int] = Field(default=None, exclude=True)
 
 
 class StaffLoginResponse(BaseModel):
@@ -330,6 +332,7 @@ async def root():
 def create_staff_token(staff: Dict[str, str]) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(hours=STAFF_TOKEN_EXPIRE_HOURS)
     payload = {
+        "jti": str(uuid.uuid4()),
         "sub": staff["id"],
         "email": staff["email"],
         "name": staff["name"],
@@ -337,6 +340,29 @@ def create_staff_token(staff: Dict[str, str]) -> str:
         "exp": expires_at,
     }
     return jwt.encode(payload, os.environ["STAFF_AUTH_SECRET"], algorithm=JWT_ALGORITHM)
+
+
+async def revoke_staff_token(staff: StaffUser) -> None:
+    if not staff.token_jti:
+        return
+    revoked = {
+        "id": staff.token_jti,
+        "staff_id": staff.id,
+        "expires_at": staff.token_exp,
+        "revoked_at": utc_now_iso(),
+    }
+    await db.revoked_staff_tokens.update_one(
+        {"id": staff.token_jti},
+        {"$set": revoked},
+        upsert=True,
+    )
+
+
+async def is_staff_token_revoked(token_jti: Optional[str]) -> bool:
+    if not token_jti:
+        return True
+    token_doc = await db.revoked_staff_tokens.find_one({"id": token_jti}, {"_id": 0, "id": 1})
+    return token_doc is not None
 
 
 async def write_audit_log(staff: StaffUser, action: str, resource: str, resource_id: Optional[str] = None, detail: Optional[str] = None) -> AuditLog:
@@ -390,11 +416,15 @@ async def get_current_staff(authorization: Optional[str] = Header(default=None))
             email=payload["email"],
             name=payload["name"],
             role=payload["role"],
+            token_jti=payload.get("jti"),
+            token_exp=payload.get("exp"),
         )
     except (JWTError, KeyError) as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired staff login.") from exc
     if not staff:
         raise HTTPException(status_code=401, detail="Invalid staff login.")
+    if await is_staff_token_revoked(staff.token_jti):
+        raise HTTPException(status_code=401, detail="Staff login has been revoked.")
     return staff
 
 
@@ -419,6 +449,7 @@ async def staff_login(input_data: StaffLoginRequest):
 
 @api_router.post("/auth/logout")
 async def staff_logout(staff: StaffUser = Depends(get_current_staff)):
+    await revoke_staff_token(staff)
     await write_audit_log(staff, "logout", "staff_session", staff.id, "Staff logged out")
     return {"status": "ok"}
 

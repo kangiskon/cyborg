@@ -116,3 +116,12 @@
 - Made reviewed React callback dependencies explicit while keeping memory-only staff sessions.
 - Simplified notification/audit compliance tests and auth URL helper nesting.
 - Verified with lint, 52-test backend regression, browser smoke test, and independent iteration-6 testing.
+
+
+## App.js Refactor & Hook Review Fixes — 2026-06-02
+- Split large App.js responsibilities into reception components: ChatPanel, BookingPanel, StaffPanels, and ProfilePanel.
+- Moved shared constants into `src/constants/reception.js` and helpers into `src/utils/reception.js`.
+- Reduced App.js imports and removed duplicated panel logic from the root app file.
+- Kept staff token storage memory-only and verified no localStorage token persistence.
+- Removed CRACO console warning and kept backend staff validation safe.
+- Verified with JavaScript lint, 52 backend tests, browser smoke test, and independent iteration-7 regression testing.
