@@ -113,7 +113,7 @@ function SuggestedLeadActions({ lead, staffAuth, refreshDashboard }) {
     } catch (error) {
       toast.error("Could not approve this suggested lead.");
     }
-  }, [lead.id, refreshDashboard, staffAuth?.token]);
+  }, [apiPath, authHeaders, axios, lead.id, refreshDashboard, staffAuth?.token, toast]);
   if (lead.status !== "suggested" || !canApprove) return null;
   return <button data-testid={`lead-approve-button-${lead.id}`} className="approve-lead-button" type="button" onClick={approveLead}>Approve</button>;
 }

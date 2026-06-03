@@ -363,7 +363,7 @@ async def is_staff_token_revoked(token_jti: Optional[str]) -> bool:
     if not token_jti:
         return True
     token_doc = await db.revoked_staff_tokens.find_one({"id": token_jti}, {"_id": 0, "id": 1})
-    return token_doc is not None
+    return bool(token_doc)
 
 
 async def write_audit_log(staff: StaffUser, action: str, resource: str, resource_id: Optional[str] = None, detail: Optional[str] = None) -> AuditLog:

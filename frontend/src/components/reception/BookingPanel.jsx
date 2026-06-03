@@ -25,11 +25,11 @@ export function BookingPanel({ profile, refreshDashboard }) {
     } catch (error) {
       toast.error("Could not load appointment slots.");
     }
-  }, []);
+  }, [apiPath, axios, setForm, setSlots, toast]);
 
   useEffect(() => { loadSlots(form.date); }, [form.date, loadSlots]);
 
-  const updateField = useCallback((field, value) => setForm((current) => ({ ...current, [field]: value })), []);
+  const updateField = useCallback((field, value) => setForm((current) => ({ ...current, [field]: value })), [setForm]);
 
   const submitBooking = async (event) => {
     event.preventDefault();

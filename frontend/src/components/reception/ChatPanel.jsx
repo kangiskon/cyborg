@@ -42,7 +42,7 @@ export function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
   useEffect(() => {
     const node = bottomRef.current;
     node?.scrollIntoView(SCROLL_INTO_VIEW_OPTIONS);
-  }, [messages]);
+  }, [bottomRef, messages, SCROLL_INTO_VIEW_OPTIONS]);
 
   const sendMessage = useCallback(async (text = input) => {
     const clean = text.trim();
@@ -60,7 +60,7 @@ export function ChatPanel({ messages, setMessages, sessionId, setSessionId }) {
     } finally {
       setSending(false);
     }
-  }, [input, sending, sessionId, setMessages, setSessionId]);
+  }, [apiPath, axios, createChatMessage, input, sending, sessionId, setInput, setMessages, setSending, setSessionId, toast]);
 
   return (
     <section className="chat-panel" data-testid="ai-receptionist-chat-panel">

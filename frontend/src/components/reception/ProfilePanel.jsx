@@ -31,7 +31,7 @@ export function ProfilePanel({ profile, setProfile, staffAuth }) {
     } catch (error) {
       toast.error("Could not update profile.");
     }
-  }, [profile, setProfile, token]);
+  }, [apiPath, authHeaders, axios, profile, setEditing, setProfile, toast, token]);
 
   if (!profile) return null;
 

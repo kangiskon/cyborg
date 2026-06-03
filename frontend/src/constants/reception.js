@@ -1,23 +1,26 @@
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+export const HTTP_UNAUTHORIZED = 401;
+export const HTTP_FORBIDDEN = 403;
+
 export const HTTP_STATUS = {
-  unauthorized: 401,
-  forbidden: 403,
+  unauthorized: HTTP_UNAUTHORIZED,
+  forbidden: HTTP_FORBIDDEN,
 };
 
-const ICON_TINY = 15;
-const ICON_INPUT_ACTION = 17;
+const ICON_INLINE_SMALL = 15;
+const ICON_INPUT_BUTTON = 17;
 const ICON_ACTION = 18;
-const ICON_CARDLET = 19;
+const ICON_HERO_STATUS = 19;
 const ICON_STAT = 20;
 const ICON_PANEL = 24;
 
 export const ICON_SIZE = {
-  tiny: ICON_TINY,
-  inputAction: ICON_INPUT_ACTION,
+  tiny: ICON_INLINE_SMALL,
+  inputAction: ICON_INPUT_BUTTON,
   action: ICON_ACTION,
-  cardlet: ICON_CARDLET,
+  cardlet: ICON_HERO_STATUS,
   stat: ICON_STAT,
   panel: ICON_PANEL,
 };

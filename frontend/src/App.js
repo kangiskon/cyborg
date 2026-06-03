@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import "@/App.css";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import axios from "axios";
-import { motion } from "framer-motion";
 import { ArrowRight, Bot, Clock3, Sparkles } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { BookingPanel } from "@/components/reception/BookingPanel";
@@ -15,7 +14,6 @@ import {
   HTTP_STATUS,
   ICON_SIZE,
   initialMessage,
-  STAT_TILE_MOTION,
 } from "@/constants/reception";
 import {
   apiPath,
@@ -29,12 +27,12 @@ import {
 
 function StatTile({ icon: Icon, label, value, detail, testId }) {
   return (
-    <motion.div data-testid={testId} className="stat-tile" initial={STAT_TILE_MOTION.initial} animate={STAT_TILE_MOTION.animate} transition={STAT_TILE_MOTION.transition}>
+    <div data-testid={testId} className="stat-tile">
       <div className="stat-icon" data-testid={`${testId}-icon`}><Icon size={ICON_SIZE.stat} /></div>
       <p data-testid={`${testId}-label`}>{label}</p>
       <strong data-testid={`${testId}-value`}>{value}</strong>
       <span data-testid={`${testId}-detail`}>{detail}</span>
-    </motion.div>
+    </div>
   );
 }
 
@@ -50,7 +48,7 @@ function useReceptionData() {
 
   const resetStaffState = useCallback(() => {
     clearStaffState({ setStaffAuth, setDashboard, setNotifications, setUnreadCount, setAuditLogs });
-  }, []);
+  }, [clearStaffState]);
 
   const loadPublicData = useCallback(async () => {
     try {
@@ -59,7 +57,7 @@ function useReceptionData() {
     } catch (error) {
       toast.error("Could not load receptionist workspace.");
     }
-  }, []);
+  }, [apiPath, axios, setProfile, toast]);
 
   const loadProtectedData = useCallback(async (token, filters) => {
     if (!token) {
@@ -92,7 +90,7 @@ function useReceptionData() {
         toast.error("Could not load staff inbox.");
       }
     }
-  }, [resetStaffState]);
+  }, [HTTP_STATUS, apiPath, authHeaders, axios, buildAuditParams, buildNotificationParams, resetStaffState, setAuditLogs, setDashboard, setNotifications, setUnreadCount, toast]);
 
   return {
     profile,
@@ -155,7 +153,7 @@ function Home() {
     setNotificationFilters(DEFAULT_NOTIFICATION_FILTERS);
     setAuditFilters(DEFAULT_AUDIT_FILTERS);
     toast.success("Staff logged out.");
-  }, [resetStaffState, setAuditFilters, setNotificationFilters, staffAuth?.token]);
+  }, [DEFAULT_AUDIT_FILTERS, DEFAULT_NOTIFICATION_FILTERS, apiPath, authHeaders, axios, resetStaffState, setAuditFilters, setNotificationFilters, staffAuth?.token, toast]);
 
   const refreshDashboard = useCallback(() => {
     loadProtectedData(staffAuth?.token, activeFilters);
@@ -170,7 +168,7 @@ function Home() {
     } catch (error) {
       toast.error("Could not mark notification as read.");
     }
-  }, [refreshDashboard, staffAuth?.token]);
+  }, [apiPath, authHeaders, axios, refreshDashboard, staffAuth?.token, toast]);
 
   const exportAuditLogs = useCallback(async () => {
     const token = staffAuth?.token;
@@ -183,7 +181,7 @@ function Home() {
     } catch (error) {
       toast.error("Could not export audit logs.");
     }
-  }, [auditFilters, refreshDashboard, staffAuth?.token]);
+  }, [apiPath, auditFilters, authHeaders, axios, buildAuditParams, downloadBlob, refreshDashboard, staffAuth?.token, toast]);
 
   return (
     <div className="reception-app" data-testid="ai-receptionist-app">
