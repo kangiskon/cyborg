@@ -32,7 +32,7 @@ export const DEFAULT_NOTIFICATION_FILTERS = { type: "all", status: "all" };
 export const DEFAULT_AUDIT_FILTERS = { action: "all", actorRole: "all" };
 export const NOTIFICATION_TYPES = ["all", "appointment", "lead", "lead_suggestion", "staff_security"];
 export const NOTIFICATION_STATUSES = ["all", "unread", "read"];
-export const AUDIT_ACTIONS = ["all", "login", "logout", "view", "profile_update", "notification_read", "lead_approved", "export"];
+export const AUDIT_ACTIONS = ["all", "login", "logout", "view", "profile_update", "notification_read", "lead_approved", "access_code_update", "export"];
 export const AUDIT_ROLES = ["all", "admin", "staff", "viewer", "system"];
 
 export const STAT_TILE_MOTION = {

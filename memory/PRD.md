@@ -160,3 +160,13 @@
 - Installer prompts interactively for public URL, AI key, and staff access codes.
 - Added `UBUNTU_24_04_INSTALL.md` with usage, paths, service commands, domain setup, and HTTPS notes.
 - Verified shell syntax and existing JS/Python lint.
+
+
+## Admin Staff/Viewer Access-Code Management — 2026-06-02
+- Added Admin-only access-code reset endpoint for Staff and Viewer roles.
+- Admin can manually set new Staff/Viewer codes from the protected inbox.
+- Changing a role code increments that role's code version, immediately invalidating active sessions for that role.
+- Old codes stop working; new codes can log in for the changed role.
+- Added audit log action `access_code_update` and staff security notification.
+- Admin code cannot be changed through this endpoint.
+- Verified with lint, backend regression, browser smoke test, and independent iteration-10 validation.
