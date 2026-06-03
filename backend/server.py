@@ -349,6 +349,7 @@ async def revoke_staff_token(staff: StaffUser) -> None:
         "id": staff.token_jti,
         "staff_id": staff.id,
         "expires_at": staff.token_exp,
+        "expires_at_dt": datetime.fromtimestamp(staff.token_exp, timezone.utc) if staff.token_exp else None,
         "revoked_at": utc_now_iso(),
     }
     await db.revoked_staff_tokens.update_one(
@@ -907,3 +908,9 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+@app.on_event("startup")
+async def ensure_auth_indexes():
+    await db.revoked_staff_tokens.create_index("id", unique=True)
+    await db.revoked_staff_tokens.create_index("expires_at_dt", expireAfterSeconds=0)

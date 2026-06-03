@@ -125,3 +125,11 @@
 - Kept staff token storage memory-only and verified no localStorage token persistence.
 - Removed CRACO console warning and kept backend staff validation safe.
 - Verified with JavaScript lint, 52 backend tests, browser smoke test, and independent iteration-7 regression testing.
+
+
+## Server-Side Token Revocation — 2026-06-02
+- Added JWT token IDs (`jti`) for staff sessions.
+- Added MongoDB-backed `revoked_staff_tokens` denylist.
+- Logout now stores the token ID in the denylist and immediately invalidates that token for `/auth/me` and protected routes.
+- Added TTL/index cleanup for expired revoked tokens to prevent unbounded denylist growth.
+- Verified with lint, backend auth regression tests, browser smoke test, and independent iteration-8 verification.
