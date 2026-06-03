@@ -133,3 +133,12 @@
 - Logout now stores the token ID in the denylist and immediately invalidates that token for `/auth/me` and protected routes.
 - Added TTL/index cleanup for expired revoked tokens to prevent unbounded denylist growth.
 - Verified with lint, backend auth regression tests, browser smoke test, and independent iteration-8 verification.
+
+
+## Hook Dependency & Constants Cleanup — 2026-06-02
+- Tightened reviewed React hook dependency arrays across App, ChatPanel, BookingPanel, StaffPanels, and ProfilePanel.
+- Extracted/renamed HTTP and icon constants for clearer intent.
+- Removed unused App-level motion import and simplified stat tile rendering.
+- Replaced backend token revocation comparison with `bool(token_doc)` to avoid identity-comparison concerns.
+- Split toast reducer logic into smaller helper functions.
+- Verified with lint, 54 backend tests, browser smoke test, and independent iteration-9 regression testing.
