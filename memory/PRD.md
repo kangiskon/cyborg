@@ -142,3 +142,13 @@
 - Replaced backend token revocation comparison with `bool(token_doc)` to avoid identity-comparison concerns.
 - Split toast reducer logic into smaller helper functions.
 - Verified with lint, 54 backend tests, browser smoke test, and independent iteration-9 regression testing.
+
+
+## Branding Cleanup — 2026-06-02
+- Removed public badge/backlink markup from `frontend/public/index.html`.
+- Removed external platform scripts and analytics snippet from the public template.
+- Updated page title and meta description to Frontkind branding.
+- Removed frontend dev overlay package and related CRACO integration.
+- Cleaned unused frontend test-id comments/references.
+- Kept backend AI integration internals intact because they power the live GPT workflow.
+- Verified no visible badge/link remains with browser smoke test.
