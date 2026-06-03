@@ -1,0 +1,40 @@
+{
+  "summary": "Executed backend + frontend validation for admin-managed staff/viewer access-code changes, token invalidation, audit logging, and notification coverage on preview URL. All requested flows passed and default staff/viewer codes were restored.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_access_code_management.py",
+    "/app/test_reports/pytest/pytest_results_iteration_10_access_codes.xml"
+  ],
+  "action_items": [
+    "No blocking defects found in requested access-code management scope.",
+    "Optional: add 'access_code_update' to frontend AUDIT_ACTIONS list for direct UI filtering parity with backend audit action values."
+  ],
+  "critical_code_review_comments": [
+    "PATCH /api/auth/access-codes correctly enforces admin-only access and rejects admin-role updates (422 validation).",
+    "Role code-version invalidation works immediately: pre-change staff/viewer tokens fail with 401 after update.",
+    "Admin UI access-code manager is correctly gated to admin role and hidden for viewer in tested flow."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_access_code_management.py",
+    "/app/test_reports/iteration_10.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "test_credentials": "Read from /app/memory/test_credentials.md and used exactly: Admin FK-ADMIN-7X9Q2, Staff FK-STAFF-4M8P1, Viewer FK-VIEW-6L3N5. /app/auth_testing.md not present in workspace.",
+  "seed_data_creation": "Runtime notifications/audit entries created by code-change operations; public lead created via API regression test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New regression suite /app/backend/tests/test_access_code_management.py covers admin change staff/viewer code, old/new login behavior, session invalidation, non-admin denial, admin-role denial, audit entry and staff_security notification checks; suite includes teardown restoration to default staff/viewer codes.",
+  "rca of the issue": "No defect reproduced in requested scope. Verified contract behavior end-to-end on public preview URL.",
+  "mocked_api": "NO MOCKED APIs used in this run."
+}

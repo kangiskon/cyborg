@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 import os
 import logging
 import re
@@ -63,6 +64,7 @@ AVAILABLE_SLOTS = ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "13:00"
 JWT_ALGORITHM = "HS256"
 STAFF_TOKEN_EXPIRE_HOURS = 8
 ROLE_RANK = {"viewer": 1, "staff": 2, "admin": 3}
+CHANGEABLE_ACCESS_CODE_ROLES = ["staff", "viewer"]
 NOTIFICATION_TARGET_ROLES = ["admin", "staff"]
 CONTACT_INTENT_KEYWORDS = ["callback", "call me", "appointment", "book", "schedule", "consultation", "viewing", "follow up", "follow-up"]
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -274,6 +276,23 @@ class StaffLoginResponse(BaseModel):
     staff: StaffUser
 
 
+class StaffAccessCodeUpdate(BaseModel):
+    role: str
+    new_access_code: str = Field(..., min_length=6)
+
+    @field_validator("role")
+    @classmethod
+    def role_can_be_changed(cls, value: str) -> str:
+        if value not in CHANGEABLE_ACCESS_CODE_ROLES:
+            raise ValueError("Only staff and viewer access codes can be changed.")
+        return value
+
+
+class StaffAccessCodeUpdateResponse(BaseModel):
+    role: str
+    message: str
+
+
 class Notification(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -329,7 +348,31 @@ async def root():
     return {"message": "AI receptionist API is ready"}
 
 
-def create_staff_token(staff: Dict[str, str]) -> str:
+async def get_role_code_version(role: str) -> int:
+    version_doc = await db.staff_code_versions.find_one({"role": role}, {"_id": 0, "version": 1})
+    return int(version_doc.get("version", 0)) if version_doc else 0
+
+
+async def get_staff_access_codes() -> Dict[str, str]:
+    stored_codes = await db.staff_access_codes.find({}, {"_id": 0}).to_list(10)
+    codes_by_role = {item["role"]: item["access_code"] for item in stored_codes}
+    return {
+        "admin": os.environ["STAFF_ADMIN_ACCESS_CODE"],
+        "staff": codes_by_role.get("staff", os.environ["STAFF_STAFF_ACCESS_CODE"]),
+        "viewer": codes_by_role.get("viewer", os.environ["STAFF_VIEWER_ACCESS_CODE"]),
+    }
+
+
+async def get_staff_by_access_code(access_code: str) -> Optional[Dict[str, str]]:
+    codes = await get_staff_access_codes()
+    for role, code in codes.items():
+        if access_code == code:
+            directory = staff_directory()
+            return directory[os.environ[f"STAFF_{role.upper()}_ACCESS_CODE"]]
+    return None
+
+
+async def create_staff_token(staff: Dict[str, str]) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(hours=STAFF_TOKEN_EXPIRE_HOURS)
     payload = {
         "jti": str(uuid.uuid4()),
@@ -337,6 +380,7 @@ def create_staff_token(staff: Dict[str, str]) -> str:
         "email": staff["email"],
         "name": staff["name"],
         "role": staff["role"],
+        "code_version": await get_role_code_version(staff["role"]),
         "exp": expires_at,
     }
     return jwt.encode(payload, os.environ["STAFF_AUTH_SECRET"], algorithm=JWT_ALGORITHM)
@@ -364,6 +408,30 @@ async def is_staff_token_revoked(token_jti: Optional[str]) -> bool:
         return True
     token_doc = await db.revoked_staff_tokens.find_one({"id": token_jti}, {"_id": 0, "id": 1})
     return bool(token_doc)
+
+
+async def is_staff_token_version_current(role: str, token_version: Optional[int]) -> bool:
+    current_version = await get_role_code_version(role)
+    return int(token_version or 0) == current_version
+
+
+async def update_staff_access_code(role: str, new_access_code: str) -> int:
+    codes = await get_staff_access_codes()
+    if any(existing_role != role and code == new_access_code for existing_role, code in codes.items()):
+        raise HTTPException(status_code=409, detail="Access code is already used by another role.")
+    await db.staff_access_codes.update_one(
+        {"role": role},
+        {"$set": {"role": role, "access_code": new_access_code, "updated_at": utc_now_iso()}},
+        upsert=True,
+    )
+    result = await db.staff_code_versions.find_one_and_update(
+        {"role": role},
+        {"$inc": {"version": 1}, "$set": {"updated_at": utc_now_iso()}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0, "version": 1},
+    )
+    return int(result.get("version", 1)) if result else 1
 
 
 async def write_audit_log(staff: StaffUser, action: str, resource: str, resource_id: Optional[str] = None, detail: Optional[str] = None) -> AuditLog:
@@ -420,12 +488,15 @@ async def get_current_staff(authorization: Optional[str] = Header(default=None))
             token_jti=payload.get("jti"),
             token_exp=payload.get("exp"),
         )
+        token_code_version = payload.get("code_version", 0)
     except (JWTError, KeyError) as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired staff login.") from exc
     if not staff:
         raise HTTPException(status_code=401, detail="Invalid staff login.")
     if await is_staff_token_revoked(staff.token_jti):
         raise HTTPException(status_code=401, detail="Staff login has been revoked.")
+    if not await is_staff_token_version_current(staff.role, token_code_version):
+        raise HTTPException(status_code=401, detail="Staff access code was changed. Please log in again.")
     return staff
 
 
@@ -440,12 +511,25 @@ def require_role(min_role: str):
 
 @api_router.post("/auth/staff-login", response_model=StaffLoginResponse)
 async def staff_login(input_data: StaffLoginRequest):
-    staff = staff_directory().get(input_data.access_code.strip())
+    staff = await get_staff_by_access_code(input_data.access_code.strip())
     if not staff:
         raise HTTPException(status_code=401, detail="Invalid staff access code.")
     staff_user = StaffUser(**staff)
     await write_audit_log(staff_user, "login", "staff_session", staff_user.id, "Staff access code login")
-    return StaffLoginResponse(token=create_staff_token(staff), staff=staff_user)
+    return StaffLoginResponse(token=await create_staff_token(staff), staff=staff_user)
+
+
+@api_router.patch("/auth/access-codes", response_model=StaffAccessCodeUpdateResponse)
+async def change_staff_access_code(input_data: StaffAccessCodeUpdate, staff: StaffUser = Depends(require_role("admin"))):
+    await update_staff_access_code(input_data.role, input_data.new_access_code.strip())
+    await write_audit_log(staff, "access_code_update", "staff_access_code", input_data.role, f"Updated {input_data.role} access code and invalidated active sessions")
+    await create_notification(
+        "staff_security",
+        "Staff access code changed",
+        f"The {input_data.role} access code was changed by an admin. Existing {input_data.role} sessions must log in again.",
+        input_data.role,
+    )
+    return StaffAccessCodeUpdateResponse(role=input_data.role, message="Access code updated and active sessions invalidated.")
 
 
 @api_router.post("/auth/logout")

@@ -103,6 +103,46 @@ function AuditLogPanel({ logs, filters, onFiltersChange, onExport }) {
   );
 }
 
+function AccessCodeManager({ staffAuth, refreshDashboard }) {
+  const [role, setRole] = useState("staff");
+  const [newCode, setNewCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitCodeChange = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      await axios.patch(apiPath("/auth/access-codes"), {
+        role,
+        new_access_code: newCode,
+      }, {
+        headers: authHeaders(staffAuth.token),
+      });
+      toast.success(`${role} access code updated. Active ${role} sessions must log in again.`);
+      setNewCode("");
+      refreshDashboard();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Could not update access code.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="access-code-panel" data-testid="access-code-manager-panel">
+      <div className="mini-heading" data-testid="access-code-heading"><span><LockKeyhole size={ICON_SIZE.action} /> Access codes</span></div>
+      <form className="access-code-form" data-testid="access-code-form" onSubmit={submitCodeChange}>
+        <select data-testid="access-code-role-select" value={role} onChange={(event) => setRole(event.target.value)}>
+          <option data-testid="access-code-role-option-staff" value="staff">Staff</option>
+          <option data-testid="access-code-role-option-viewer" value="viewer">Viewer</option>
+        </select>
+        <Input data-testid="access-code-new-input" value={newCode} onChange={(event) => setNewCode(event.target.value)} minLength={6} placeholder="New access code" required />
+        <Button data-testid="access-code-submit-button" className="primary-action" type="submit" disabled={submitting}>Update code</Button>
+      </form>
+    </div>
+  );
+}
+
 function SuggestedLeadActions({ lead, staffAuth, refreshDashboard }) {
   const canApprove = ["admin", "staff"].includes(staffAuth?.staff?.role);
   const approveLead = useCallback(async () => {
@@ -127,6 +167,7 @@ export function InboxPanel({ dashboard, staffAuth, onLogin, onLogout, notificati
       <NotificationCenter notifications={notifications} unreadCount={unreadCount} onMarkRead={onMarkRead} staffId={staffAuth.staff.id} filters={notificationFilters} onFiltersChange={onNotificationFiltersChange} />
       <div className="handoff-list" data-testid="appointments-handoff-list"><h3 data-testid="appointments-handoff-title">Upcoming appointments</h3>{(dashboard?.next_appointments || []).length === 0 ? <p data-testid="appointments-empty-state">No appointments booked yet.</p> : dashboard.next_appointments.map((appointment) => <div data-testid={`appointment-item-${appointment.id}`} className="handoff-item" key={appointment.id}><div><strong data-testid={`appointment-item-${appointment.id}-name`}>{appointment.name}</strong><span data-testid={`appointment-item-${appointment.id}-service`}>{appointment.service}</span></div><time data-testid={`appointment-item-${appointment.id}-time`}>{appointment.date} · {appointment.time}</time></div>)}</div>
       <div className="handoff-list" data-testid="leads-handoff-list"><h3 data-testid="leads-handoff-title">New callback requests</h3>{(dashboard?.recent_leads || []).length === 0 ? <p data-testid="leads-empty-state">No callback requests yet.</p> : dashboard.recent_leads.map((item) => <div data-testid={`lead-item-${item.id}`} className="handoff-item" key={item.id}><div><strong data-testid={`lead-item-${item.id}-name`}>{item.name}</strong><span data-testid={`lead-item-${item.id}-interest`}>{item.interest}</span></div><div className="lead-meta" data-testid={`lead-item-${item.id}-meta`}><time data-testid={`lead-item-${item.id}-phone`}>{item.phone}</time><span data-testid={`lead-item-${item.id}-status`}>{item.status}</span><SuggestedLeadActions lead={item} staffAuth={staffAuth} refreshDashboard={refreshDashboard} /></div></div>)}</div>
+      {staffAuth.staff.role === "admin" && <AccessCodeManager staffAuth={staffAuth} refreshDashboard={refreshDashboard} />}
       {staffAuth.staff.role === "admin" && <AuditLogPanel logs={auditLogs} filters={auditFilters} onFiltersChange={onAuditFiltersChange} onExport={onAuditExport} />}
     </section>
   );

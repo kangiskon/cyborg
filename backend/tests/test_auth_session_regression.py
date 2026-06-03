@@ -136,3 +136,42 @@ class TestAuthSessionRegression:
         new_me_data = new_me.json()
         assert new_me_data["id"] == second_login["staff"]["id"]
         assert new_me_data["role"] == "staff"
+
+    def test_admin_can_change_viewer_code_and_invalidate_viewer_sessions(self, api_client):
+        admin_login = login(api_client, ADMIN_ACCESS_CODE)
+        viewer_login = login(api_client, VIEWER_ACCESS_CODE)
+        viewer_token = viewer_login["token"]
+        temporary_code = "VIEW-TEMP-998877"
+
+        update = api_client.patch(
+            f"{API_BASE}/auth/access-codes",
+            headers=auth_headers(admin_login["token"]),
+            json={"role": "viewer", "new_access_code": temporary_code},
+            timeout=20,
+        )
+        assert update.status_code == 200
+
+        old_token_response = api_client.get(f"{API_BASE}/auth/me", headers=auth_headers(viewer_token), timeout=20)
+        assert old_token_response.status_code == 401
+        assert "access code" in old_token_response.json().get("detail", "").lower()
+
+        new_viewer_login = login(api_client, temporary_code)
+        assert new_viewer_login["staff"]["role"] == "viewer"
+
+        restore = api_client.patch(
+            f"{API_BASE}/auth/access-codes",
+            headers=auth_headers(admin_login["token"]),
+            json={"role": "viewer", "new_access_code": VIEWER_ACCESS_CODE},
+            timeout=20,
+        )
+        assert restore.status_code == 200
+
+    def test_non_admin_cannot_change_access_codes(self, api_client):
+        staff_login = login(api_client, STAFF_ACCESS_CODE)
+        update = api_client.patch(
+            f"{API_BASE}/auth/access-codes",
+            headers=auth_headers(staff_login["token"]),
+            json={"role": "viewer", "new_access_code": "VIEW-FAIL-123"},
+            timeout=20,
+        )
+        assert update.status_code == 403
