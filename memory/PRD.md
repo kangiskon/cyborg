@@ -152,3 +152,11 @@
 - Cleaned unused frontend test-id comments/references.
 - Kept backend AI integration internals intact because they power the live GPT workflow.
 - Verified no visible badge/link remains with browser smoke test.
+
+
+## Ubuntu 24.04 Installer — 2026-06-02
+- Added `install_ubuntu_24_04.sh` full-server installer.
+- Installer provisions Node.js 20, Yarn, MongoDB 8, Python venv, Nginx, systemd backend service, app environment files, and firewall allowances.
+- Installer prompts interactively for public URL, AI key, and staff access codes.
+- Added `UBUNTU_24_04_INSTALL.md` with usage, paths, service commands, domain setup, and HTTPS notes.
+- Verified shell syntax and existing JS/Python lint.
